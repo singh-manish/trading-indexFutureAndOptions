@@ -1,0 +1,4 @@
+redis>= 2.8
+jedis>=2.5.2
+commons-pools2>=2.2
+ib
