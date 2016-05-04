@@ -407,7 +407,8 @@ public class SingleLegExit implements Runnable {
             }
 
             if ( (debugFlag) &&
-                    (Integer.parseInt(String.format("%1$tM", timeNow)) % 5 == 0)) {
+                    (Integer.parseInt(String.format("%1$tM", timeNow)) % 5 == 0) &&
+                    (Integer.parseInt(String.format("%1$tS", timeNow)) % 30 == 0)) {                
                 // output hearbeat message
                 String timeOne = new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(rangeLimitObj.updatedtime);
                 String outputToWrite = timeOne
@@ -534,28 +535,28 @@ public class SingleLegExit implements Runnable {
         }        
     }
     
-    void calculateBreachOpt() {        
+    void calculateBreachOpt() {
 
         rangeLimitObj.stopLossLimitBreached = false;
         rangeLimitObj.takeProfitLimitBreached = false;
         double legLastPrice = 0;
 
-        if (tickObj.monitoringSymbolLastPrice > 0) {
-            if (tickObj.tradingSymbolLastPriceUpdateTime > 0) {
-                legLastPrice = tickObj.monitoringSymbolLastPrice;
-            }
+        if ((tickObj.monitoringSymbolLastPrice > 0) && 
+                (tickObj.tradingSymbolLastPriceUpdateTime > 0)) {
+            legLastPrice = tickObj.monitoringSymbolLastPrice;
+
             rangeLimitObj.updatedtime = tickObj.tradingSymbolLastPriceUpdateTime;
 
             if (legObj.rightType.equalsIgnoreCase("CALL") || legObj.rightType.equalsIgnoreCase("C")) {
                 if (legLastPrice <= rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Stop Loss Limit on long position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on long position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice > rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Take Profit Limit on long position. legLastPrice : " + legLastPrice + " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on long position. legLastPrice : " + legLastPrice + " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -565,13 +566,13 @@ public class SingleLegExit implements Runnable {
             } else if ((legObj.rightType.equalsIgnoreCase("PUT") || legObj.rightType.equalsIgnoreCase("P"))) {
                 if (legLastPrice > rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Stop Loss Limit on short position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on short position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice < rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Take Profit Limit on short position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on short position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -580,7 +581,7 @@ public class SingleLegExit implements Runnable {
                 }
             } else {
                 if (debugFlag) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
                 }
             }
         }
@@ -593,22 +594,22 @@ public class SingleLegExit implements Runnable {
         rangeLimitObj.takeProfitLimitBreached = false;
         double legLastPrice = 0;
 
-        if (tickObj.monitoringSymbolLastPrice > 0) {
-            if (tickObj.tradingSymbolLastPriceUpdateTime > 0) {
-                legLastPrice = tickObj.monitoringSymbolLastPrice;
-            }
+        if ((tickObj.monitoringSymbolLastPrice > 0) && 
+                (tickObj.tradingSymbolLastPriceUpdateTime > 0)) {
+
+            legLastPrice = tickObj.monitoringSymbolLastPrice;                
             rangeLimitObj.updatedtime = tickObj.tradingSymbolLastPriceUpdateTime;
 
             if (legObj.qty > 0) {
                 if (legLastPrice <= rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Stop Loss Limit on positive Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on positive Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice > rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Take Profit Limit on positive Quantity. legLastPrice : " + legLastPrice + " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on positive Quantity. legLastPrice : " + legLastPrice + " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -618,13 +619,13 @@ public class SingleLegExit implements Runnable {
             } else if (legObj.qty < 0) {
                 if (legLastPrice > rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Stop Loss Limit on negative Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on negative Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice < rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Breached Take Profit Limit on positive Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit :" + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on negative Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit :" + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -633,7 +634,7 @@ public class SingleLegExit implements Runnable {
                 }
             } else {
                 if (debugFlag) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
                 }
             }
         }
@@ -764,15 +765,8 @@ public class SingleLegExit implements Runnable {
         int returnOrderId = 0;
         // Possible order types are as follows
         // market, relativewithzeroaslimitwithamountoffset, relativewithmidpointaslimitwithamountoffset, relativewithzeroaslimitwithpercentoffset, relativewithmidpointaslimitwithpercentoffset 
-        if (orderTypeToUse.equalsIgnoreCase("market")) {
-            // Place Order for OPT type - Call Option
-            returnOrderId = ibInteractionClient.placeCallOptionOrderAtMarket(symbolName, quantity, expiry, strikePrice, mktAction, strategyName, true);
-        } else if (orderTypeToUse.equalsIgnoreCase("relativewithzeroaslimitwithamountoffset")) {
-            double limitPrice = 0.0; // For relative order, Limit price is suggested to be left as zero
-            double offsetAmount = 0.0; // zero means it will take default value based on exchange / timezone
-            // Place Order for OPT type - Call Option - For options Relative Order is not supported
-            returnOrderId = ibInteractionClient.placeCallOptionOrderAtMarket(symbolName, quantity, expiry, strikePrice, mktAction, strategyName, true);
-        }
+        // Place Order for OPT type - Call Option - For options Relative Order is not supported
+        returnOrderId = ibInteractionClient.placeCallOptionOrderAtMarket(symbolName, quantity, expiry, strikePrice, mktAction, strategyName, true);
 
         return (returnOrderId);
     }
@@ -782,15 +776,8 @@ public class SingleLegExit implements Runnable {
         int returnOrderId = 0;
         // Possible order types are as follows
         // market, relativewithzeroaslimitwithamountoffset, relativewithmidpointaslimitwithamountoffset, relativewithzeroaslimitwithpercentoffset, relativewithmidpointaslimitwithpercentoffset 
-        if (orderTypeToUse.equalsIgnoreCase("market")) {
-            // Place Order for OPT type - Put Option
-            returnOrderId = ibInteractionClient.placePutOptionOrderAtMarket(symbolName, quantity, expiry, strikePrice, mktAction, strategyName, true);
-        } else if (orderTypeToUse.equalsIgnoreCase("relativewithzeroaslimitwithamountoffset")) {
-            double limitPrice = 0.0; // For relative order, Limit price is suggested to be left as zero
-            double offsetAmount = 0.0; // zero means it will take default value based on exchange / timezone
-            // Place Order for OPT type - Put Option - For options Relative order is not supported
-            returnOrderId = ibInteractionClient.placePutOptionOrderAtMarket(symbolName, quantity, expiry, strikePrice, mktAction, strategyName, true);
-        }
+        // Place Order for OPT type - Put Option - For options Relative order is not supported
+        returnOrderId = ibInteractionClient.placePutOptionOrderAtMarket(symbolName, quantity, expiry, strikePrice, mktAction, strategyName, true);
 
         return (returnOrderId);
     }
@@ -957,18 +944,18 @@ public class SingleLegExit implements Runnable {
             // Since position exists, get position details
             TradingObject myTradingObject = new TradingObject(myUtils.getHashMapValueFromRedis(jedisPool, openPositionsQueueKeyName, Integer.toString(slotNumber), debugFlag));
 
-            double legLastPrice;
+            double legLastSpread;
             if ((tickObj.tradingSymbolLastPriceUpdateTime > 0) && (tickObj.tradingSymbolLastPriceUpdateTime >= tickObj.tradingSymbolClosePriceUpdateTime)) {
-                legLastPrice = tickObj.tradingSymbolLastPrice;
+                legLastSpread = tickObj.tradingSymbolLastPrice * legObj.lotSize;
             } else {
-                legLastPrice = tickObj.tradingSymbolClosePrice;
+                legLastSpread = tickObj.tradingSymbolClosePrice * legObj.lotSize;
             }
             String timeWhenUpdated = new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(tickObj.tradingSymbolLastPriceUpdateTime);
             myTradingObject.setMonitoringContractLowerBreach(rangeLimitObj.stopLossLimit);
             myTradingObject.setMonitoringContractUpperBreach(rangeLimitObj.takeProfitLimit);
             myTradingObject.setMonitoringContractLastKnownPrice(tickObj.monitoringSymbolLastPrice);
             myTradingObject.setMonitoringContractLastUpdatedTimeStamp(timeWhenUpdated);         
-            myTradingObject.setTradingContractLastKnownSpread(legLastPrice);
+            myTradingObject.setTradingContractLastKnownSpread(legLastSpread);
             myTradingObject.setTradingContractLastUpdatedTimeStamp(timeWhenUpdated);
             myTradingObject.setTradingContractExitReason("notexitedyet");           
 

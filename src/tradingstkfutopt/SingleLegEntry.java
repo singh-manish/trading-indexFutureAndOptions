@@ -174,9 +174,9 @@ public class SingleLegEntry extends Thread {
         }
 
         if (Math.abs(myTradeObject.getSideAndSize()) == 1) {
-            myTradeObject.setSideAndSize(myTradeObject.getSideAndSize(), legSizeMultiple);
+            myTradeObject.setSideAndSize(myTradeObject.getSideAndSize(), legSizeMultiple);            
         }
-
+        
         if ((tradingContractSpread > 0) || (tradingContractSpread < 0)) {
             myTradeObject.setTradingContractEntrySpread(tradingContractSpread);
             // Reset the standard Deviation OR 1% of entry to actual 1% value. 
@@ -190,6 +190,7 @@ public class SingleLegEntry extends Thread {
         myTradeObject.setMonitoringContractEntryStdDev(Math.abs(Math.round(monitoringContractPrice/100)));
         
         if (myTradeObject.getTradingContractType().equalsIgnoreCase("OPT")) {
+            myTradeObject.setSideAndSize(Math.abs(myTradeObject.getSideAndSize()), 1);
             if (myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase("CALL") || myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase("C")) {
                 myTradeObject.setMonitoringContractLowerBreach(
                         Math.round(Float.parseFloat(myTradeObject.getMonitoringContractEntryPrice()))

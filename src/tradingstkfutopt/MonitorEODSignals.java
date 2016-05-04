@@ -60,6 +60,15 @@ public class MonitorEODSignals extends Thread {
         int timeSlot;
         int positionSideAndSize;
         String monitoringSymbolType; // symbolType would be "IND" or "STK" or "FUT" or "OPT"
+        
+        public MyExistingPositionClass(int timeSlot) {
+            this.symbolName = "NA";
+            this.positionSymbolType = "FUT";
+            this.optionRightType = "NA";
+            this.timeSlot = timeSlot;
+            this.positionSideAndSize = 0;
+            this.monitoringSymbolType = "IND";
+        }        
     }
 
     public ConcurrentHashMap<Integer, MyExistingPositionClass> myExistingPositionMap = new ConcurrentHashMap<Integer, MyExistingPositionClass>();
@@ -69,6 +78,13 @@ public class MonitorEODSignals extends Thread {
         int legSizeMultiple;
         String monitoringContractType; // Type would be "IND" or "STK" or "FUT" or "OPT"
         String brokerToUse; //Currently this would support "IB" or "ZERODHA"
+
+        public MyTimeSlotSubscriptionsClass(int legSize) {
+            this.tradingContractType = "FUT";
+            this.monitoringContractType = "IND";
+            this.legSizeMultiple = legSize;
+            this.brokerToUse = "IB";
+        }
     }
     //subscription - structure contracttotrade:contracttomonitor:legsizemultiple:broker
     //e.g. 1015:OPT:IND:2:ZERODHA
@@ -201,11 +217,12 @@ public class MonitorEODSignals extends Thread {
             //subscription - structure contracttotrade:contracttomonitor:legsizemultiple:broker
             //e.g. 1015:OPT:IND:2:ZERODHA            
             int timeSlotHHMM = Integer.parseInt(timeSlotDetails[0]);
-            myTimeSlotSubscriptionsMap.put(timeSlotHHMM, new MyTimeSlotSubscriptionsClass());
-            myTimeSlotSubscriptionsMap.get(timeSlotHHMM).tradingContractType = timeSlotDetails[1];
-            myTimeSlotSubscriptionsMap.get(timeSlotHHMM).monitoringContractType = timeSlotDetails[2];
-            myTimeSlotSubscriptionsMap.get(timeSlotHHMM).legSizeMultiple = Integer.parseInt(timeSlotDetails[3]);
-            myTimeSlotSubscriptionsMap.get(timeSlotHHMM).brokerToUse = timeSlotDetails[4];            
+            MyTimeSlotSubscriptionsClass localTimeSlotSubscriptionObj = new MyTimeSlotSubscriptionsClass(1);
+            localTimeSlotSubscriptionObj.tradingContractType = timeSlotDetails[1];
+            localTimeSlotSubscriptionObj.monitoringContractType = timeSlotDetails[2];
+            localTimeSlotSubscriptionObj.legSizeMultiple = Integer.parseInt(timeSlotDetails[3]);
+            localTimeSlotSubscriptionObj.brokerToUse = timeSlotDetails[4];                        
+            myTimeSlotSubscriptionsMap.put(timeSlotHHMM, localTimeSlotSubscriptionObj);
         }        
     } // End of Method
      
@@ -226,18 +243,19 @@ public class MonitorEODSignals extends Thread {
                 if ( (myTradeObject.getOrderState().equalsIgnoreCase("entryorderfilled")) ) {
                     //set the values of parameters...
                     int slotNumber = Integer.parseInt(keyMap);
-                    myExistingPositionMap.put(slotNumber, new MyExistingPositionClass());
-                    myExistingPositionMap.get(slotNumber).symbolName = myTradeObject.getTradingObjectName();
-                    myExistingPositionMap.get(slotNumber).timeSlot = positionTimeSlot;
-                    myExistingPositionMap.get(slotNumber).positionSideAndSize = myTradeObject.getSideAndSize();
-                    myExistingPositionMap.get(slotNumber).positionSymbolType = myTradeObject.getTradingContractType();                                            
+                    MyExistingPositionClass tempExistingPositionObj = new MyExistingPositionClass(positionTimeSlot);
+                    tempExistingPositionObj.symbolName = myTradeObject.getTradingObjectName();
+                    tempExistingPositionObj.timeSlot = positionTimeSlot;
+                    tempExistingPositionObj.positionSideAndSize = myTradeObject.getSideAndSize();
+                    tempExistingPositionObj.positionSymbolType = myTradeObject.getTradingContractType();                                            
                     if (myTradeObject.getTradingContractType().equalsIgnoreCase("OPT")) {
-                        myExistingPositionMap.get(slotNumber).optionRightType = myTradeObject.getTradingContractOptionRightType();
+                        tempExistingPositionObj.optionRightType = myTradeObject.getTradingContractOptionRightType();
                     }
-                    myExistingPositionMap.get(slotNumber).monitoringSymbolType = myTradeObject.getTradingContractType();
+                    tempExistingPositionObj.monitoringSymbolType = myTradeObject.getTradingContractType();
                     if (myTimeSlotSubscriptionsMap.containsKey(positionTimeSlot)){
-                        myExistingPositionMap.get(slotNumber).monitoringSymbolType = myTimeSlotSubscriptionsMap.get(positionTimeSlot).monitoringContractType;
-                    }
+                        tempExistingPositionObj.monitoringSymbolType = myTimeSlotSubscriptionsMap.get(positionTimeSlot).monitoringContractType;
+                    }                    
+                    myExistingPositionMap.put(slotNumber, tempExistingPositionObj);
                 }
             }
         } catch (JedisException e) {
@@ -285,18 +303,19 @@ public class MonitorEODSignals extends Thread {
                         }                        
                     } else {
                         // no previous entry exists for given slot number so create one
-                        myExistingPositionMap.put(slotNumber, new MyExistingPositionClass());
-                        myExistingPositionMap.get(slotNumber).symbolName = myTradeObject.getTradingObjectName();
-                        myExistingPositionMap.get(slotNumber).timeSlot = positionTimeSlot;
-                        myExistingPositionMap.get(slotNumber).positionSideAndSize = myTradeObject.getSideAndSize();
-                        myExistingPositionMap.get(slotNumber).positionSymbolType = myTradeObject.getTradingContractType();                                            
+                        MyExistingPositionClass tempExistingPositionObject = new MyExistingPositionClass(positionTimeSlot);
+                        tempExistingPositionObject.symbolName = myTradeObject.getTradingObjectName();
+                        tempExistingPositionObject.timeSlot = positionTimeSlot;
+                        tempExistingPositionObject.positionSideAndSize = myTradeObject.getSideAndSize();
+                        tempExistingPositionObject.positionSymbolType = myTradeObject.getTradingContractType();                                            
                         if (myTradeObject.getTradingContractType().equalsIgnoreCase("OPT")) {
-                            myExistingPositionMap.get(slotNumber).optionRightType = myTradeObject.getTradingContractOptionRightType();
+                            tempExistingPositionObject.optionRightType = myTradeObject.getTradingContractOptionRightType();
                         }
-                        myExistingPositionMap.get(slotNumber).monitoringSymbolType = myTradeObject.getTradingContractType();
+                        tempExistingPositionObject.monitoringSymbolType = myTradeObject.getTradingContractType();
                         if (myTimeSlotSubscriptionsMap.containsKey(positionTimeSlot)){
-                            myExistingPositionMap.get(slotNumber).monitoringSymbolType = myTimeSlotSubscriptionsMap.get(positionTimeSlot).monitoringContractType;
-                        }                        
+                            tempExistingPositionObject.monitoringSymbolType = myTimeSlotSubscriptionsMap.get(positionTimeSlot).monitoringContractType;
+                        }                                                
+                        myExistingPositionMap.put(slotNumber, tempExistingPositionObject);
                     }
                 }
             }
@@ -346,18 +365,19 @@ public class MonitorEODSignals extends Thread {
                         }                        
                     } else {
                         // no previous entry exists for given slot number so create one
-                        myExistingPositionMap.put(slotNumber, new MyExistingPositionClass());
-                        myExistingPositionMap.get(slotNumber).symbolName = myTradeObject.getTradingObjectName();
-                        myExistingPositionMap.get(slotNumber).timeSlot = positionTimeSlot;
-                        myExistingPositionMap.get(slotNumber).positionSideAndSize = myTradeObject.getSideAndSize();
-                        myExistingPositionMap.get(slotNumber).positionSymbolType = myTradeObject.getTradingContractType();                                            
+                        MyExistingPositionClass tempExistingPositionObj = new MyExistingPositionClass(positionTimeSlot);
+                        tempExistingPositionObj.symbolName = myTradeObject.getTradingObjectName();
+                        tempExistingPositionObj.timeSlot = positionTimeSlot;
+                        tempExistingPositionObj.positionSideAndSize = myTradeObject.getSideAndSize();
+                        tempExistingPositionObj.positionSymbolType = myTradeObject.getTradingContractType();                                            
                         if (myTradeObject.getTradingContractType().equalsIgnoreCase("OPT")) {
-                            myExistingPositionMap.get(slotNumber).optionRightType = myTradeObject.getTradingContractOptionRightType();
+                            tempExistingPositionObj.optionRightType = myTradeObject.getTradingContractOptionRightType();
                         }
-                        myExistingPositionMap.get(slotNumber).monitoringSymbolType = myTradeObject.getTradingContractType();
+                        tempExistingPositionObj.monitoringSymbolType = myTradeObject.getTradingContractType();
                         if (myTimeSlotSubscriptionsMap.containsKey(positionTimeSlot)){
-                            myExistingPositionMap.get(slotNumber).monitoringSymbolType = myTimeSlotSubscriptionsMap.get(positionTimeSlot).monitoringContractType;
+                            tempExistingPositionObj.monitoringSymbolType = myTimeSlotSubscriptionsMap.get(positionTimeSlot).monitoringContractType;
                         }                        
+                        myExistingPositionMap.put(slotNumber, tempExistingPositionObj);                        
                     }
                 }
             }
