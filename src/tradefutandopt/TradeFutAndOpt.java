@@ -22,8 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
-
+package tradefutandopt;
 /**
  * @author Manish Kumar Singh
  */
@@ -31,7 +30,8 @@ import redis.clients.jedis.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class SingleLegTrading {
+
+public class TradeFutAndOpt {
 
     private static boolean debugFlag = false;
 
@@ -48,7 +48,7 @@ public class SingleLegTrading {
 
     private static MyExchangeClass myExchangeObj;
 
-    SingleLegTrading(String redisIP, int redisPort, String redisConfigKey, boolean debugIndicator) {
+    TradeFutAndOpt(String redisIP, int redisPort, String redisConfigKey, boolean debugIndicator) {
         // Set Debug Flag 
         debugFlag = debugIndicator;
         // Create connection Pool for  Redis server. 
@@ -99,7 +99,7 @@ public class SingleLegTrading {
             System.exit(1);
         }
 
-        SingleLegTrading myComboTradingSystem = new SingleLegTrading(args[1], Integer.parseInt(args[2]), args[3], tempFlag);
+        TradeFutAndOpt myComboTradingSystem = new TradeFutAndOpt(args[1], Integer.parseInt(args[2]), args[3], tempFlag);
 
         // Set default timezone
         TimeZone.setDefault(myExchangeObj.getExchangeTimeZone());
@@ -119,13 +119,18 @@ public class SingleLegTrading {
 
             System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + " OrderID field " + ibOrderIDKeyName + " has been set for next Order Id as : " + myUtils.getKeyValueFromRedis(jedisPool, ibOrderIDKeyName, false));
 
+            // Reuqest auto binding for all open orders
+            myComboTradingSystem.ibInteractionClient.ibClient.reqAutoOpenOrders(true);
+            
             // Subscribe to Market Index
             int marketIndexReqId = 0;
+            int bankNiftyIndexReqId = 0;
             if (myExchangeObj.getExchangeCurrency().equalsIgnoreCase("INR")) {
                 marketIndexReqId = myComboTradingSystem.ibInteractionClient.requestIndMktDataSubscription("NIFTY50");
+                bankNiftyIndexReqId = myComboTradingSystem.ibInteractionClient.requestIndMktDataSubscription("BANKNIFTY");                
             } else if (myExchangeObj.getExchangeCurrency().equalsIgnoreCase("USD")) {
                 marketIndexReqId = myComboTradingSystem.ibInteractionClient.requestIndMktDataSubscription("SNP500");
-            } 
+            }
             
             //Get order details of executed order from IB to redis hashmap - will help construct reports anytime irrespective of IB being available or not  
             myUtils.getOrderDetails2LocalDB(jedisPool, redisConfigurationKey, myComboTradingSystem.ibInteractionClient, true);
@@ -156,10 +161,28 @@ public class SingleLegTrading {
             boolean exitNow = false;
             while (!exitNow) {
                 Calendar timeNow = Calendar.getInstance(myExchangeObj.getExchangeTimeZone());
+                if ( (Integer.parseInt(String.format("%1$tM%1$tS", timeNow)) % 1000 == 0) ) {           
+                    int numIndexWatchers = 0;
+                    if (myComboTradingSystem.ibInteractionClient.myTickDetails.containsKey(marketIndexReqId)) {
+                        numIndexWatchers = myComboTradingSystem.ibInteractionClient.myTickDetails.get(marketIndexReqId).getNumberOfSubscribedClients();                            
+                    }
+
+                    int numBankNiftyIndexWatchers = 0;
+                    if (myComboTradingSystem.ibInteractionClient.myTickDetails.containsKey(bankNiftyIndexReqId)) {
+                        numBankNiftyIndexWatchers = myComboTradingSystem.ibInteractionClient.myTickDetails.get(bankNiftyIndexReqId).getNumberOfSubscribedClients();                            
+                    }                    
+                    // output hearbeat message
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) +
+                        "Hearbeat For Main Program. " +
+                        "IB Connection Status " + myComboTradingSystem.ibInteractionClient.ibClient.isConnected() +
+                        "# of threads watching Index " + numIndexWatchers +
+                        "# of threads watching Bank Nifty Index " + numBankNiftyIndexWatchers);                    
+                }
                 // Provision for exiting if time has reached outside market hours or on weekends for NSE
                 if (Integer.parseInt(String.format("%1$tH%1$tM%1$tS", timeNow)) >= myExchangeObj.getExchangeCloseTimeHHMMSS()) {
                     exitNow = true;
-                    System.out.println(String.format("%1$tY%1$tm%1$td%1$tH%1$tM%1$tS", timeNow) + " : Exiting as reaching Outside market hours OR prescribed trading hours.");
+                    System.out.println(String.format("%1$tY%1$tm%1$td%1$tH%1$tM%1$tS ", timeNow) + 
+                            "Exiting as reaching Outside market hours OR prescribed trading hours.");
                 }
                 // Wait for two minutes before next round of checking for exchange closure                
                 if (!exitNow) {
@@ -167,7 +190,8 @@ public class SingleLegTrading {
                 }
             }
             myComboTradingSystem.ibInteractionClient.cancelMktDataSubscription(marketIndexReqId);
-            
+            myComboTradingSystem.ibInteractionClient.cancelMktDataSubscription(bankNiftyIndexReqId);
+                        
             //Get order details of executed order from IB to redis hashmap - will help construct reports anytime irrespective of IB being available or not
             myUtils.getOrderDetails2LocalDB(jedisPool, redisConfigurationKey, myComboTradingSystem.ibInteractionClient, true);
             // Disconnect IB 

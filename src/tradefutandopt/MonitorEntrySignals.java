@@ -22,7 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 import java.util.Calendar;
 import java.util.Map;
@@ -54,10 +54,6 @@ public class MonitorEntrySignals extends Thread {
     private String confOrderType = "MARKET";
     private String duplicateComboAllowed = "yes";
     private String duplicateLegAllowed = "yes";
-    //private String signalSymbolType = "FUT"; // STK or FUT or OPT
-
-    private int MAXLONGPOSITIONS = 2;
-    private int MAXSHORTPOSITIONS = 2;
 
     private int nextOpenSlotNumber = 6;
 
@@ -66,7 +62,6 @@ public class MonitorEntrySignals extends Thread {
     private double NOFURTHERPOSITIONSTOPLOSSLIMIT = -10000.0;
 
     public String exchangeHolidayListKeyName;
-    private int minimumMoratoriumForPosition = 37;
     
     MonitorEntrySignals(String name, JedisPool redisConnectionPool, String redisConfigKey, MyUtils utils, MyExchangeClass exchangeObj, IBInteraction ibInterClient, boolean debugIndicator) {
 
@@ -87,19 +82,11 @@ public class MonitorEntrySignals extends Thread {
         entrySignalsQueueKeyName = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "ENTRYSIGNALSQUEUE", false);
         confOrderType = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "ENTRYORDERTYPE", false);
 
-        duplicateComboAllowed = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "ALLOWDUPLICATECOMBOPOSITIONS", false);
-        duplicateLegAllowed = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "ALLOWDUPLICATELEGPOSITIONS", false);
-
-        minimumMoratoriumForPosition = Integer.parseInt(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MINIMUMMORATORIUMFORPOSITION", false));
-
         exchangeHolidayListKeyName = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "EXCHANGEHOLIDAYLISTKEYNAME", false);
-
-        MAXLONGPOSITIONS = Integer.parseInt(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMLONGPOSITIONS", false));
-        MAXSHORTPOSITIONS = Integer.parseInt(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMSHORTPOSITIONS", false));
 
         nextOpenSlotNumber = getMinimumOpenPositionSlotNumber(openPositionsQueueKeyName, 1);
         // Debug Message
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Info : Monitoring Entry Signals for Strategy " + strategyName + " confOrderType " + confOrderType + " nextSlotNum " + nextOpenSlotNumber + " MAXLONGPOSITIONS " + MAXLONGPOSITIONS + " MAXSHORTPOSITIONS " + MAXSHORTPOSITIONS + " queue name " + entrySignalsQueueKeyName);
+        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Info : Monitoring Entry Signals for Strategy " + strategyName + " confOrderType " + confOrderType + " nextSlotNum " + nextOpenSlotNumber + " entry Signal queue name " + entrySignalsQueueKeyName);
 
     }
 
@@ -144,6 +131,7 @@ public class MonitorEntrySignals extends Thread {
     }
 
     boolean withinEntryOrderTimeRange(String entryTimeStamp) {
+
         boolean returnValue;
 
         Calendar timeNow = Calendar.getInstance(myExchangeObj.getExchangeTimeZone());
@@ -247,180 +235,30 @@ public class MonitorEntrySignals extends Thread {
         return (returnValue);
     }
 
-    boolean checkExistingOpenPositions(String openPositionsQueueKeyName, String signalReceived) {
+    boolean checkIfLongOrShortEntryAllowed(String allowLongIndicator, String allowShortIndicator, String signalReceived) {
 
         boolean returnValue = true;
-        boolean alreadyExisting = false;
-        Jedis jedis;
-        int numOpenLongPositions = 0;
-        int numOpenShortPositions = 0;
-
+        
         TradingObject tradingSignal = new TradingObject(signalReceived);
-                
-        // Go through all open position slots to check for existance of Current Signal        
-        jedis = jedisPool.getResource();
-        try {
-            // retrieve open position map from redis  
-            Map<String, String> retrieveMap = jedis.hgetAll(openPositionsQueueKeyName);
-            for (String keyMap : retrieveMap.keySet()) {
-                // Do Stuff here
-                TradingObject myTradeObject = new TradingObject(retrieveMap.get(keyMap));
-                if (myTradeObject.getSideAndSize() < 0 ) {
-                    numOpenShortPositions++;  // update number of Open Short positions
-                }
-                if (myTradeObject.getSideAndSize() > 0 ) {
-                    numOpenLongPositions++; // update number of Open Long positions
-                }                
-                if ((myTradeObject.getTradingObjectName().equalsIgnoreCase(tradingSignal.getTradingObjectName())) && 
-                        (myTradeObject.getTradingContractType().equalsIgnoreCase(tradingSignal.getTradingContractType())) &&
-                        (!duplicateComboAllowed.equalsIgnoreCase("yes")) ) {
-                    if (myTradeObject.getTradingContractType().equalsIgnoreCase("STK")) {
-                        if (myTradeObject.getTradingContractUnderlyingName().equalsIgnoreCase(tradingSignal.getTradingContractUnderlyingName())) {
-                            // new position already exists
-                            alreadyExisting = true;                            
-                        }                        
-                    } else if (myTradeObject.getTradingContractType().equalsIgnoreCase("FUT")) {
-                        if (myTradeObject.getTradingContractUnderlyingName().equalsIgnoreCase(tradingSignal.getTradingContractUnderlyingName())) {
-                            // new position already exists
-                            alreadyExisting = true;                            
-                        }                        
-                    } else if (myTradeObject.getTradingContractType().equalsIgnoreCase("OPT")) {
-                        if ((myTradeObject.getTradingContractUnderlyingName().equalsIgnoreCase(tradingSignal.getTradingContractUnderlyingName() )) &&
-                             (myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase(tradingSignal.getTradingContractOptionRightType())) &&
-                             (myTradeObject.getTradingContractOptionStrike() == tradingSignal.getTradingContractOptionStrike()) ) {
-                            // new position already exists
-                            alreadyExisting = true;                        
-                        }
-                    }
-                }
-            }
-        } catch (JedisException e) {
-            //if something wrong happen, return it back to the pool
-            if (null != jedis) {
-                jedisPool.returnBrokenResource(jedis);
-                jedis = null;
-            }
-        } finally {
-            //Return the Jedis instance to the pool once finished using it  
-            if (null != jedis) {
-                jedisPool.returnResource(jedis);
-            }
-        }
-
-        if ((alreadyExisting) ||
-                ((tradingSignal.getSideAndSize() > 0) && (numOpenLongPositions >= MAXLONGPOSITIONS)) || 
-                ((tradingSignal.getSideAndSize() < 0) && (numOpenShortPositions >= MAXSHORTPOSITIONS))                
-            ) {
-            returnValue = false;
-        }
-
-        // Debug Message
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "numOpenLongPositions : " + numOpenLongPositions + " against Allowed LONG positions : " + MAXLONGPOSITIONS);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "numOpenShortPositions : " + numOpenShortPositions + " against Allowed SHORT positions : " + MAXSHORTPOSITIONS);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Already Existing Status : " + alreadyExisting);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Finally returning (true is allow taking positions. false is do not allow) : " + returnValue);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + " for trading contract " + tradingSignal.getTradingContractStructure() + " against monitoring contract " + tradingSignal.getMonitoringContractStructure() + " for Long/Short " + tradingSignal.getSideAndSize());
-
-        return (returnValue);
-    }
-
-    boolean checkLastTradeTimeStamp(String closedPositionsQueueKeyName, String entryTimeStamp, String newSignalComboName) {
-
-        boolean returnValue = true;
-        String lastTradeTimeStamp = "20150000000000";
-        Jedis jedis;
-
-        // Go through all closed positions        
-        jedis = jedisPool.getResource();
-
-        try {
-            // retrieve open position map from redis  
-            Map<String, String> retrieveMap = jedis.hgetAll(closedPositionsQueueKeyName);
-            for (String keyMap : retrieveMap.keySet()) {
-                // Since position exists in closedQueue, check if exisitng pairPosition and new pair Position is same
-                TradingObject myTradeObject = new TradingObject(retrieveMap.get(keyMap));
-                if (myTradeObject.getTradingObjectName().matches(newSignalComboName)) {
-                    // new position has been trades in past. Apply moratorium period
-                    lastTradeTimeStamp = myTradeObject.getTradingContractExitTimeStamp();
-                    // exit Time stamp of past trade occurs in the same day as new proposed entry
-                    // make returnValue false if exit timestamp of existing position and now/new position is less than defined reentrydelay/moratorium i.e. one trading day equivalent
-                    int elapsedTradingMinutes = 10 * myUtils.calcElapsedBars(jedisPool, lastTradeTimeStamp, entryTimeStamp, myExchangeObj, exchangeHolidayListKeyName, false);
-                    if (elapsedTradingMinutes <= minimumMoratoriumForPosition) {
-                        returnValue = false;
-                    }
-                    /*
-                     //check if exit was due to loss. if loss then do something.
-                     double roundTripBrokerage = Double.parseDouble(myTradeObject.getEntrySpread()) * (0.01 + 0.0019 + 0.0001) / 100;
-                     if (myTradeObject.getEntryTimeStamp().substring(0,8).matches(myTradeObject.getExitTimeStamp().substring(0,8))) {
-                     roundTripBrokerage = roundTripBrokerage + Double.parseDouble(myTradeObject.getExitSpread()) * (0.01 + 0.0019 + 0.0001) / 100;                    
-                     } else {
-                     roundTripBrokerage = roundTripBrokerage + Double.parseDouble(myTradeObject.getExitSpread()) * (0.01 + 0.0019 + 0.0001) / 100;                    
-                     }
-                     double tradePnL = 0;
-                     if (Integer.parseInt(myTradeObject.getSideAndSize()) > 0) {
-                     tradePnL += Double.parseDouble(myTradeObject.getExitSpread()) - Double.parseDouble(myTradeObject.getEntrySpread()) - roundTripBrokerage;
-                     } else if (Integer.parseInt(myTradeObject.getSideAndSize()) < 0) {
-                     tradePnL += Double.parseDouble(myTradeObject.getEntrySpread()) - Double.parseDouble(myTradeObject.getExitSpread()) - roundTripBrokerage;
-                     }
-                     if (tradePnL < 0) {
-                     // DO SPECIFIC THINGS HERE IN CASE OF PREIOUS LOSS MAKING TRADE
-                     } else {
-                     // DO SPECIFIC THINGS HERE IN CASE OF PREVIOUS NON-NEGATIVE TRADE
-                     }
-                     */
-                }
-            }
-        } catch (JedisException e) {
-            //if something wrong happen, return it back to the pool
-            if (null != jedis) {
-                jedisPool.returnBrokenResource(jedis);
-                jedis = null;
-            }
-        } finally {
-            //Return the Jedis instance to the pool once finished using it  
-            if (null != jedis) {
-                jedisPool.returnResource(jedis);
-            }
-        }
-
-        // Debug Message
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "lastTradeTimeStamp :" + lastTradeTimeStamp + " currentTimeStamp :" + entryTimeStamp + " returning : " + returnValue + " for " + newSignalComboName);
-
-        return (returnValue);
-    }
-
-    boolean notBlackListed(String blacklistedSymbols, String signalSymbol) {
-        boolean notFound = true;
-
-        if ((blacklistedSymbols.length() > 1) && (signalSymbol.length() > 1)) {
-
-            String symbolName = "";
-            if (signalSymbol.split("_").length > 1) {
-                symbolName = signalSymbol.split("_")[1];
-            }
-            String symbolsList[] = blacklistedSymbols.split(",");
-            for (String symbol : symbolsList) {
-                if (symbolName.equalsIgnoreCase(symbol)) {
-                    notFound = false;
-                }
-            }
-        }
-
-        return (notFound);
-    }
-
-    boolean checkIfLongOrShortEntryAllowed(String allowLongIndicator, String allowShortIndicator, String side) {
-        boolean returnValue = true;
-
+        
+        int side = tradingSignal.getSideAndSize();
+        
         if ((allowLongIndicator.equalsIgnoreCase("yes")) && (allowShortIndicator.equalsIgnoreCase("yes"))) {
             returnValue = true;
+        } else if (tradingSignal.getTradingContractType().equalsIgnoreCase("OPT")) {
+            if ((!(allowLongIndicator.equalsIgnoreCase("yes"))) && (tradingSignal.getTradingContractOptionRightType().equalsIgnoreCase("CALL"))) {
+                returnValue = false;
+            }
+            if ((!(allowShortIndicator.equalsIgnoreCase("yes"))) && (tradingSignal.getTradingContractOptionRightType().equalsIgnoreCase("PUT"))) {
+                returnValue = false;
+            }
         } else {
-            if ((!(allowLongIndicator.equalsIgnoreCase("yes"))) && (Integer.parseInt(side) > 0)) {
+            if ((!(allowLongIndicator.equalsIgnoreCase("yes"))) && (side > 0)) {
                 returnValue = false;
             }
-            if ((!(allowShortIndicator.equalsIgnoreCase("yes"))) && (Integer.parseInt(side) < 0)) {
+            if ((!(allowShortIndicator.equalsIgnoreCase("yes"))) && (side < 0)) {
                 returnValue = false;
-            }
+            }            
         }
         return (returnValue);
     }
@@ -450,15 +288,11 @@ public class MonitorEntrySignals extends Thread {
             entrySignalReceived = myUtils.popKeyValueFromQueueRedis(jedisPool, entrySignalsQueueKeyName, 60, false);
             if (entrySignalReceived != null) {
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Info : Received Entry Signal as : " + entrySignalReceived);
-                // Read the Maximum Possible Positions
-                MAXLONGPOSITIONS = Integer.parseInt(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMLONGPOSITIONS", false));
-                MAXSHORTPOSITIONS = Integer.parseInt(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMSHORTPOSITIONS", false));
                 // Read the Maximun Number of Permissible Entries in a day including open positions at start of the day
                 MAXNUMENTRIESINADAY = Integer.parseInt(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMENTRIESINADAY", false));
                 // Read the Days takeProfitLimit and stopLossLimit for no further new positions
                 NOFURTHERPOSITIONTAKEPROFITLIMIT = Double.parseDouble(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "NOFURTHERPOSITIONTAKEPROFITLIMIT", false));
                 NOFURTHERPOSITIONSTOPLOSSLIMIT = Double.parseDouble(myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "NOFURTHERPOSITIONSTOPLOSSLIMIT", false));
-                String blackListedSymbols = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "BLACKLISTEDSYMBOLS", false);
                 String allowLongIndicator = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "ALLOWLONGENTRY", false);
                 String allowShortIndicator = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "ALLOWSHORTENTRY", false);
 
@@ -469,10 +303,7 @@ public class MonitorEntrySignals extends Thread {
                 // check if the existing pair does not exist and there is space for Taking up the position, then enter position
                 if ((nextOpenSlotNumber <= MAXNUMENTRIESINADAY)
                         && withinEntryOrderTimeRange(entrySignal[TradingObject.ENTRY_TIMESTAMP_INDEX])
-                        && checkExistingOpenPositions(openPositionsQueueKeyName, entrySignalReceived)
-                        && checkLastTradeTimeStamp(closedPositionsQueueKeyName, entrySignal[TradingObject.ENTRY_TIMESTAMP_INDEX], entrySignal[TradingObject.NAME_INDEX])
-                        && notBlackListed(blackListedSymbols, entrySignal[TradingObject.NAME_INDEX])
-                        && checkIfLongOrShortEntryAllowed(allowLongIndicator, allowShortIndicator, entrySignal[TradingObject.SIDE_SIZE_INDEX])
+                        && checkIfLongOrShortEntryAllowed(allowLongIndicator, allowShortIndicator, entrySignalReceived)
                         && withinStipulatedCurrentPnLForToday(MAXNUMENTRIESINADAY, openPositionsQueueKeyName, closedPositionsQueueKeyName, NOFURTHERPOSITIONTAKEPROFITLIMIT, NOFURTHERPOSITIONSTOPLOSSLIMIT)) {
                     // Block position slot - doing it here outside entry thread to avoid race condition which is seen happeneing if done inside thread
                     while ((myUtils.checkIfExistsHashMapField(jedisPool, openPositionsQueueKeyName, Integer.toString(nextOpenSlotNumber), false))) {

@@ -22,7 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 import java.text.DecimalFormat;
 

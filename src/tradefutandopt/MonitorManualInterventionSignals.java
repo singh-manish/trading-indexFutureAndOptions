@@ -22,7 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -133,8 +133,8 @@ public class MonitorManualInterventionSignals extends Thread {
         // corresponding shared array parameters to update  
         //
         //   1  - Square Off the trade / position at given slot number 
-        //   2  - Update trade level stop loss to given value 
-        //   3  - Update trade level take profit to given value
+        //   2  - Adjust trade level stop loss by given value 
+        //   3  - Adjust trade level take profit by given value
         //   4  - stop monitoring. (useful for graceful exit)
         String key = Integer.toString(slotNum);
         if (!(myMIDetails.containsKey(key))) {
@@ -159,6 +159,94 @@ public class MonitorManualInterventionSignals extends Thread {
 
     }
 
+    void setTradeLevelSquareOffAllOpenLongPositions(String actionReason) {
+
+        String openPositionsQueueKeyName = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "OPENPOSITIONSQUEUE", false);
+        Jedis jedis = jedisPool.getResource();
+
+        try {
+            // retrieve open position map from redis  
+            Map<String, String> retrieveMap = jedis.hgetAll(openPositionsQueueKeyName);
+            for (String keyMap : retrieveMap.keySet()) {
+                int slotNum = Integer.parseInt(keyMap);
+                if (myUtils.checkIfExistsHashMapField(jedisPool, openPositionsQueueKeyName, keyMap, false)) {
+                    TradingObject myTradeObject = new TradingObject(retrieveMap.get(keyMap));
+                    if ( (myTradeObject.getTradingContractType().equalsIgnoreCase("FUT") ||
+                            myTradeObject.getTradingContractType().equalsIgnoreCase("STK")) &&
+                            (myTradeObject.getSideAndSize() > 0 ) ) {
+                        if (!(myMIDetails.containsKey(keyMap))) {
+                            myMIDetails.put(keyMap, new MyManualInterventionClass(slotNum, "", 0));
+                        }
+                        setTradeLevelSquareOff(slotNum, actionReason);                        
+                    } else if ( myTradeObject.getTradingContractType().equalsIgnoreCase("OPT") &&
+                            (myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase("CALL") ||
+                            myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase("C")) ) {
+                        if (!(myMIDetails.containsKey(keyMap))) {
+                            myMIDetails.put(keyMap, new MyManualInterventionClass(slotNum, "", 0));
+                        }
+                        setTradeLevelSquareOff(slotNum, actionReason);                        
+                    }
+                }
+            }
+        } catch (JedisException e) {
+            //if something wrong happen, return it back to the pool
+            if (null != jedis) {
+                jedisPool.returnBrokenResource(jedis);
+                jedis = null;
+            }
+        } finally {
+            //Return the Jedis instance to the pool once finished using it  
+            if (null != jedis) {
+                jedisPool.returnResource(jedis);
+            }
+        }
+        
+    }   
+    
+    void setTradeLevelSquareOffAllOpenShortPositions(String actionReason) {
+        
+        String openPositionsQueueKeyName = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "OPENPOSITIONSQUEUE", false);
+        Jedis jedis = jedisPool.getResource();
+
+        try {
+            // retrieve open position map from redis  
+            Map<String, String> retrieveMap = jedis.hgetAll(openPositionsQueueKeyName);
+            for (String keyMap : retrieveMap.keySet()) {
+                int slotNum = Integer.parseInt(keyMap);
+                if (myUtils.checkIfExistsHashMapField(jedisPool, openPositionsQueueKeyName, keyMap, false)) {
+                    TradingObject myTradeObject = new TradingObject(retrieveMap.get(keyMap));
+                    if ( (myTradeObject.getTradingContractType().equalsIgnoreCase("FUT") ||
+                            myTradeObject.getTradingContractType().equalsIgnoreCase("STK")) &&
+                            (myTradeObject.getSideAndSize() < 0 ) ) {
+                        if (!(myMIDetails.containsKey(keyMap))) {
+                            myMIDetails.put(keyMap, new MyManualInterventionClass(slotNum, "", 0));
+                        }
+                        setTradeLevelSquareOff(slotNum, actionReason);                        
+                    } else if ( myTradeObject.getTradingContractType().equalsIgnoreCase("OPT") &&
+                            (myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase("PUT") ||
+                            myTradeObject.getTradingContractOptionRightType().equalsIgnoreCase("P")) ) {
+                        if (!(myMIDetails.containsKey(keyMap))) {
+                            myMIDetails.put(keyMap, new MyManualInterventionClass(slotNum, "", 0));
+                        }
+                        setTradeLevelSquareOff(slotNum, actionReason);                        
+                    }
+                }
+            }
+        } catch (JedisException e) {
+            //if something wrong happen, return it back to the pool
+            if (null != jedis) {
+                jedisPool.returnBrokenResource(jedis);
+                jedis = null;
+            }
+        } finally {
+            //Return the Jedis instance to the pool once finished using it  
+            if (null != jedis) {
+                jedisPool.returnResource(jedis);
+            }
+        }
+        
+    }
+    
     void setTradeLevelSquareOffAllOpenPositions(String actionReason) {
 
         String openPositionsQueueKeyName = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "OPENPOSITIONSQUEUE", false);
@@ -242,19 +330,26 @@ public class MonitorManualInterventionSignals extends Thread {
     void takeStrategyLevelAction(int actionCode, String actionReason, String targetValue) {
         /*
          101  - square off all open positions / trade
-         102  - update maximum position size as given value 0 - 10 (0 means no new position)
-         103  - empty
+         102  - square off all open long positions / call options
+         103  - square off all open short positions / put options
          104  - empty
          105  - empty
          106  - empty
-         107  - update Max allowed spread
+         107  - update maximum long position size as given value 0 - 10 (0 means no new position)
          108  - stop monitoring all open positions
+         109  - update maximum short position size as given value 0 - 10 (0 means no new position)
          */
         switch (actionCode) {
             case 101:
                 setTradeLevelSquareOffAllOpenPositions(actionReason);
                 break;
             case 102:
+                setTradeLevelSquareOffAllOpenLongPositions(actionReason);
+                break;
+            case 103:
+                setTradeLevelSquareOffAllOpenShortPositions(actionReason);
+                break;
+            case 107:
                 setStrategyLevelMaxLongPositionSize(targetValue);
                 break;
             case 108:
@@ -281,13 +376,12 @@ public class MonitorManualInterventionSignals extends Thread {
         }
 
         // while market is open. Now start monitoring the open positions queue
-        while (myUtils.marketIsOpen(eodExitTime, myExchangeObj.getExchangeTimeZone(), false)) {
+        while (myUtils.marketIsOpen(eodExitTime, myExchangeObj.getExchangeTimeZone(), false)) {          
             manualInterventionSignalReceived = myUtils.popKeyValueFromQueueRedis(jedisPool, manualInterventionSignalsQueueKeyName, 60, debugFlag);
             if (manualInterventionSignalReceived != null) {
-
                 // Debug Message
-                System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + " Received Manual Intervention Signal as " + manualInterventionSignalReceived);
-
+                System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
+                        " Received Manual Intervention Signal as " + manualInterventionSignalReceived);
                 ManualInterventionSignalObject miSignal = new ManualInterventionSignalObject(manualInterventionSignalReceived);
                 // check if current time is within stipulated is not stale by more than 5 minutes for trade level signal.
 

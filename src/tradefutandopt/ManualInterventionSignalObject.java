@@ -22,7 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 /**
  * @author Manish Kumar Singh
@@ -68,8 +68,8 @@ public class ManualInterventionSignalObject {
 
      1 to 99 - Action code pertains to at trade level
      1  - Square Off the trade / position at given slot number 
-     2  - Update trade level stop loss to given value 
-     3  - Update trade level take profit to given value
+     2  - Adjust trade level stop loss by given value 
+     3  - Adjust trade level take profit by given value
      4  - Stop Monitoring (useful for graceful exit)
 
      4  :  reason for action        

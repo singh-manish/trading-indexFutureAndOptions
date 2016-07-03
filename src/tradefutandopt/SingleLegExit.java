@@ -22,7 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -98,7 +98,7 @@ public class SingleLegExit implements Runnable {
 
         double tradingSymbolLastPrice, tradingSymbolClosePrice;
         double tradingSymbolBidPrice, tradingSymbolAskPrice;
-        long tradingSymbolLastPriceUpdateTime, tradingSymbolClosePriceUpdateTime;
+        long tradingSymbolLastPriceUpdateTime, tradingSymbolClosePriceUpdateTime, tradingSymbolTickUpdateTime;
         double monitoringSymbolLastPrice, monitoringSymbolClosePrice;
         
         MyTickObjClass() {
@@ -110,6 +110,7 @@ public class SingleLegExit implements Runnable {
             tradingSymbolAskPrice = -1;
             monitoringSymbolLastPrice = 0.0;
             monitoringSymbolClosePrice = 0.0;
+            tradingSymbolTickUpdateTime = -1;
         }
     }
 
@@ -247,6 +248,16 @@ public class SingleLegExit implements Runnable {
         tickObj = new MyTickObjClass();
 
     }
+
+    long findMaxTimestamps(long... vals) {
+       long max = Long.MIN_VALUE;
+
+       for (long d : vals) {
+          if (d > max) max = d;
+       }
+
+       return max;
+    }
     
     public void terminate() {
         quit = true;
@@ -258,9 +269,20 @@ public class SingleLegExit implements Runnable {
         quit = false;
 
         if (entryOrderStatus.matches("entryorderfilled")) {
-            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Info : Starting Monitoring for Leg " + legObj.symbol);
+            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                    "Info : Starting Monitoring for slot Number " + legObj.legId + 
+                    " trading contract " + legObj.symbol + " " + legObj.tradingContractType +
+                    " expiry " + legObj.futExpiry +
+                    " right " + legObj.rightType +
+                    " strike " + legObj.strikePrice +
+                    " monitoring contract " + legObj.symbol + " " + legObj.monitoringContractType +
+                    " ");
         } else {
-            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Info : Not Starting Monitoring for Leg " + legObj.symbol + " as Entry Order is not updated as filled (should be entryorderfilled) in open positions queue. Current Status : " + entryOrderStatus);
+            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                    "Info : Not Starting Monitoring for slot Number " + legObj.legId + 
+                    " trading contract " + legObj.symbol + " " + legObj.tradingContractType +
+                    " monitoring contract " + legObj.symbol + " " + legObj.monitoringContractType +                    
+                    " as Entry Order is not updated as filled (should be entryorderfilled) in open positions queue. Current Status : " + entryOrderStatus);
             terminate();
         }
 
@@ -276,10 +298,16 @@ public class SingleLegExit implements Runnable {
             // Provision for exiting if time has reached outside market hours for exchange - say NSE or NYSE
             if (Integer.parseInt(String.format("%1$tH%1$tM", timeNow)) >= lastExitOrderTime) {
                 if (debugFlag) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + legObj.symbol + " : " + "Reached last Exit Order Time at : " + String.format("%1$tY%1$tm%1$td%1$tH%1$tM%1$tS", timeNow) + " for Leg : " + legObj.symbol + " with lastExitOrderTIme as : " + lastExitOrderTime);
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                            "slot " + legObj.legId + " symbol " + legObj.symbol + " " + legObj.tradingContractType +  
+                            ". Reached last Exit Order Time at : " + String.format("%1$tY%1$tm%1$td%1$tH%1$tM%1$tS", timeNow) + 
+                            " with lastExitOrderTIme as : " + lastExitOrderTime);
                 }
                 if (checkForSquareOffAtEOD() || checkForIndividualLimitsAtEOD() ) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Exiting Position : " + legObj.symbol + " as square Off at EOD is true - either due to last day of expiry OR it is intra-day strategy OR position profit targets are achieved");
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                            "slot " + legObj.legId + " symbol " + legObj.symbol + " " + legObj.tradingContractType +             
+                            ". Exiting Position as square Off at EOD is true - " +
+                            "either due to last day of expiry OR it is intra-day strategy OR position profit targets are achieved");
                     orderTypeToUse = "market"; // Since it is end of Day trade with Markets about to close, use market order type irresepctive of what is configured
                     squareOffLegPosition(legObj);
                     if (positionQty == 0) {
@@ -313,10 +341,10 @@ public class SingleLegExit implements Runnable {
             if ((myMIDetails.containsKey(miKey)) && 
                     (myMIDetails.get(miKey).getActionIndicator() == MyManualInterventionClass.UPDATESTOPLOSS) && 
                     (!quit)) {
-                double tempLimit;
+                double adjAmount;
                 try {
-                    tempLimit = Double.parseDouble(myMIDetails.get(miKey).getTargetValue());
-                    rangeLimitObj.stopLossLimit = tempLimit;
+                    adjAmount = Double.parseDouble(myMIDetails.get(miKey).getTargetValue());
+                    adjustStopLossLimit(adjAmount);
                     myMIDetails.get(miKey).setActionIndicator(MyManualInterventionClass.DEFAULT);                    
                 } catch (Exception ex) {
                 }
@@ -325,10 +353,10 @@ public class SingleLegExit implements Runnable {
             if ((myMIDetails.containsKey(miKey)) && 
                     (myMIDetails.get(miKey).getActionIndicator() == MyManualInterventionClass.UPDATETAKEPROFIT) && 
                     (!quit)) {
-                double tempLimit;
+                double adjAmount;
                 try {
-                    tempLimit = Double.parseDouble(myMIDetails.get(miKey).getTargetValue());
-                    rangeLimitObj.takeProfitLimit = tempLimit;
+                    adjAmount = Double.parseDouble(myMIDetails.get(miKey).getTargetValue());
+                    adjustTakeProfitLimit(adjAmount);
                     myMIDetails.get(miKey).setActionIndicator(MyManualInterventionClass.DEFAULT);                    
                 } catch (Exception ex) {
                 }
@@ -339,7 +367,8 @@ public class SingleLegExit implements Runnable {
                     // Even After waiting 180 seconds Connection is not available. Quit now...
                     terminate();
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "IB connection not available to monitor. Exiting the thread for Leg : " + legObj.symbol);
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "IB connection not available to monitor. Exiting the thread for Leg : " + legObj.symbol);
                     }
                 } else {
                     if (!mktDataSubscribed) {
@@ -350,6 +379,7 @@ public class SingleLegExit implements Runnable {
                         } else if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
                             tradingContractMktSubscriptionReqId = ibInteractionClient.requestOptMktDataSubscription(legObj.symbol, legObj.futExpiry, legObj.rightType, legObj.strikePrice);
                         }
+                        ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).incrementNumberOfSubscribedClients();        
                         if (legObj.monitoringContractType.equalsIgnoreCase("IND")) {
                             monitoringContractMktSubscriptionReqId = ibInteractionClient.requestIndMktDataSubscription(legObj.symbol);                      
                         } else if (legObj.monitoringContractType.equalsIgnoreCase("STK")) {
@@ -358,7 +388,8 @@ public class SingleLegExit implements Runnable {
                             monitoringContractMktSubscriptionReqId = ibInteractionClient.requestFutMktDataSubscription(legObj.symbol, legObj.futExpiry);
                         } else if (legObj.monitoringContractType.equalsIgnoreCase("OPT")) {
                             monitoringContractMktSubscriptionReqId = ibInteractionClient.requestOptMktDataSubscription(legObj.symbol, legObj.futExpiry, legObj.rightType, legObj.strikePrice);
-                        }                    
+                        }
+                        ibInteractionClient.myTickDetails.get(monitoringContractMktSubscriptionReqId).incrementNumberOfSubscribedClients();                        
                         mktDataSubscribed = true;
                     }
                     
@@ -375,6 +406,8 @@ public class SingleLegExit implements Runnable {
                         if (tickObj.monitoringSymbolLastPrice == 0) {
                             // resubscribe
                             mktDataSubscribed = false;
+                            ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).decrementNumberOfSubscribedClients();                            
+                            ibInteractionClient.myTickDetails.get(monitoringContractMktSubscriptionReqId).decrementNumberOfSubscribedClients();                        
                         }
                     }
                     // Update prices
@@ -401,38 +434,93 @@ public class SingleLegExit implements Runnable {
             if ((Integer.parseInt(String.format("%1$tS", timeNow)) % 30 == 5) && (rangeLimitObj.updatedtime > 0)) {
                 long updatedTimeStalenessInSeconds = (System.currentTimeMillis() - rangeLimitObj.updatedtime) / 1000;
                 if (updatedTimeStalenessInSeconds > 300) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Subscribed Rates are getting Stale. Exiting the thread for symbol : " + legObj.symbol);
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                            "Subscribed Rates are getting Stale. Exiting the thread for slot " + legObj.legId + 
+                            " symbol " + legObj.symbol + " " + legObj.tradingContractType);
                     terminate();
                 }
             }
 
             if ( (debugFlag) &&
-                    (Integer.parseInt(String.format("%1$tM", timeNow)) % 5 == 0) &&
-                    (Integer.parseInt(String.format("%1$tS", timeNow)) % 30 == 0)) {                
+                    (Integer.parseInt(String.format("%1$tM", timeNow)) % 10 == 0) &&
+                    (Integer.parseInt(String.format("%1$tS", timeNow)) == 0)) {
                 // output hearbeat message
                 String timeOne = new java.text.SimpleDateFormat("yyyyMMddHHmmss").format(rangeLimitObj.updatedtime);
                 String outputToWrite = timeOne
-                        + " : " + legObj.symbol+ "_" + legObj.tradingContractType + "_" + legObj.rightType
+                        + " : " + legObj.symbol+ "_" + legObj.tradingContractType + "_" + legObj.rightType + "_" + legObj.strikePrice
                         + " : " + legObj.qty
                         + " : " + tickObj.tradingSymbolLastPrice                           
                         + " : " + legObj.symbol+ "_" + legObj.monitoringContractType                        
-                        + " : " + rangeLimitObj.stopLossLimit
-                        + " : " + tickObj.monitoringSymbolLastPrice                        
-                        + " : " + rangeLimitObj.takeProfitLimit;
+                        + " : " + String.format("%.0f", rangeLimitObj.stopLossLimit)
+                        + " : " + String.format("%.0f", tickObj.monitoringSymbolLastPrice)                        
+                        + " : " + String.format("%.0f", rangeLimitObj.takeProfitLimit);
                         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) +
-                                " Info : Hearbeat For legId " + legObj.legId + " : " + outputToWrite);
+                                "Hearbeat For slotNum " + legObj.legId + " : " + outputToWrite);
             }
         }
 
         // Exited Position or Markets are closing. Now Exiting.
-        // Cancel Market Data Request     
-        ibInteractionClient.cancelMktDataSubscription(tradingContractMktSubscriptionReqId); // In case subscription is still available..
-
+        if (mktDataSubscribed) {
+            mktDataSubscribed = false;
+            if (ibInteractionClient.myTickDetails.containsKey(tradingContractMktSubscriptionReqId)) {
+                ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).decrementNumberOfSubscribedClients();            
+            }
+            if (ibInteractionClient.myTickDetails.containsKey(monitoringContractMktSubscriptionReqId)) {
+                ibInteractionClient.myTickDetails.get(monitoringContractMktSubscriptionReqId).decrementNumberOfSubscribedClients();
+            }            
+        }   
         if (debugFlag) {
-            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Info : Stopped Monitoring of Leg " + legObj.symbol + ". Exiting thread Now. Thread name : " + threadName);
+            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                    "Info : Stopped Monitoring of slotNum " + legObj.legId + " trading Symbol " + legObj.symbol + 
+                    " " + legObj.tradingContractType + " " + legObj.futExpiry + " " + legObj.rightType + " " + legObj.strikePrice +
+                    " monitoring symbol " + legObj.symbol + " " + legObj.monitoringContractType +                    
+                    ". Exiting thread Now. Thread name : " + threadName);
         }
     }
 
+
+    void adjustTakeProfitLimit(double amount) {
+
+        if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
+            if (legObj.rightType.equalsIgnoreCase("CALL") || legObj.rightType.equalsIgnoreCase("C")) {
+                // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
+                rangeLimitObj.takeProfitLimit = rangeLimitObj.takeProfitLimit + amount;
+            } else if (legObj.rightType.equalsIgnoreCase("PUT") || legObj.rightType.equalsIgnoreCase("P")) {
+                // it is short position. Lower Breach is higher than current level while upper breach is lower than current level
+                rangeLimitObj.takeProfitLimit = rangeLimitObj.takeProfitLimit - amount;
+            }                    
+        } else {
+            if (legObj.qty > 0) {
+                // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
+                rangeLimitObj.takeProfitLimit = rangeLimitObj.takeProfitLimit + amount;
+            } else if (legObj.qty < 0) {
+                // it is short. Lower Breach is higher than current level while upper breach is lower than current level
+                rangeLimitObj.takeProfitLimit = rangeLimitObj.takeProfitLimit - amount;
+            }                    
+        }    
+    }
+    
+    void adjustStopLossLimit(double amount) {
+    
+        if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
+            if (legObj.rightType.equalsIgnoreCase("CALL") || legObj.rightType.equalsIgnoreCase("C")) {
+                // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
+                rangeLimitObj.stopLossLimit = rangeLimitObj.stopLossLimit + amount;
+            } else if (legObj.rightType.equalsIgnoreCase("PUT") || legObj.rightType.equalsIgnoreCase("P")) {
+                // it is short position. Lower Breach is higher than current level while upper breach is lower than current level
+                rangeLimitObj.stopLossLimit = rangeLimitObj.stopLossLimit - amount;
+            }                    
+        } else {
+            if (legObj.qty > 0) {
+                // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
+                rangeLimitObj.stopLossLimit = rangeLimitObj.stopLossLimit + amount;
+            } else if (legObj.qty < 0) {
+                // it is short. Lower Breach is higher than current level while upper breach is lower than current level
+                rangeLimitObj.stopLossLimit = rangeLimitObj.stopLossLimit - amount;
+            }                    
+        }    
+    }
+    
     boolean checkForSquareOffAtEOD() {
 
         boolean returnValue = false;
@@ -513,6 +601,12 @@ public class SingleLegExit implements Runnable {
             tickObj.tradingSymbolClosePrice = ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getSymbolClosePrice();
             tickObj.tradingSymbolLastPriceUpdateTime = ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getLastPriceUpdateTime();
             tickObj.tradingSymbolClosePriceUpdateTime = ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getClosePriceUpdateTime();
+            tickObj.tradingSymbolTickUpdateTime = findMaxTimestamps(
+                    ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getLastPriceUpdateTime(),
+                    ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getAskPriceUpdateTime(),
+                    ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getBidPriceUpdateTime(),
+                    ibInteractionClient.myTickDetails.get(tradingContractMktSubscriptionReqId).getLastVolumeUpdateTime()
+            );
         }
         
         if (ibInteractionClient.myTickDetails.containsKey(monitoringContractMktSubscriptionReqId)) {
@@ -544,19 +638,24 @@ public class SingleLegExit implements Runnable {
         if ((tickObj.monitoringSymbolLastPrice > 0) && 
                 (tickObj.tradingSymbolLastPriceUpdateTime > 0)) {
             legLastPrice = tickObj.monitoringSymbolLastPrice;
-
-            rangeLimitObj.updatedtime = tickObj.tradingSymbolLastPriceUpdateTime;
+            rangeLimitObj.updatedtime = tickObj.tradingSymbolTickUpdateTime;
 
             if (legObj.rightType.equalsIgnoreCase("CALL") || legObj.rightType.equalsIgnoreCase("C")) {
                 if (legLastPrice <= rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on long position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Stop Loss Limit on long position (Buy of CALL). legLastPrice : " + String.format("%.2f",legLastPrice) + 
+                                " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice > rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on long position. legLastPrice : " + legLastPrice + " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Take Profit Limit on long position (Buy of CALL). legLastPrice : " + String.format("%.2f",legLastPrice) + 
+                                " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -566,13 +665,19 @@ public class SingleLegExit implements Runnable {
             } else if ((legObj.rightType.equalsIgnoreCase("PUT") || legObj.rightType.equalsIgnoreCase("P"))) {
                 if (legLastPrice > rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on short position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Stop Loss Limit on short position (Buy of PUT). legLastPrice : " + String.format("%.2f",legLastPrice) + 
+                                " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice < rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on short position. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Take Profit Limit on short position (Buy of PUT). legLastPrice : " + String.format("%.2f",legLastPrice) + 
+                                " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -581,7 +686,9 @@ public class SingleLegExit implements Runnable {
                 }
             } else {
                 if (debugFlag) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                            "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                            "Zero Quantity. Inside Calculate Breach - For Option - Which is Error Condition");
                 }
             }
         }
@@ -598,18 +705,24 @@ public class SingleLegExit implements Runnable {
                 (tickObj.tradingSymbolLastPriceUpdateTime > 0)) {
 
             legLastPrice = tickObj.monitoringSymbolLastPrice;                
-            rangeLimitObj.updatedtime = tickObj.tradingSymbolLastPriceUpdateTime;
+            rangeLimitObj.updatedtime = tickObj.tradingSymbolTickUpdateTime;
 
             if (legObj.qty > 0) {
                 if (legLastPrice <= rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on positive Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Stop Loss Limit on positive Quantity. legLastPrice : " + legLastPrice + 
+                                " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice > rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on positive Quantity. legLastPrice : " + legLastPrice + " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Take Profit Limit on positive Quantity. legLastPrice : " + legLastPrice + 
+                                " takeProfitBreachLimit : " + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -619,13 +732,19 @@ public class SingleLegExit implements Runnable {
             } else if (legObj.qty < 0) {
                 if (legLastPrice > rangeLimitObj.stopLossLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Stop Loss Limit on negative Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Stop Loss Limit on negative Quantity. legLastPrice : " + legLastPrice + 
+                                " stopLossBreachLimit : " + String.format("%.2f",rangeLimitObj.stopLossLimit) );
                     }
                     rangeLimitObj.stopLossLimitBreached = true;
                     rangeLimitObj.deviation = - 99;
                 } else if (legLastPrice < rangeLimitObj.takeProfitLimit) {
                     if (debugFlag) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Breached Take Profit Limit on negative Quantity. legLastPrice : " + legLastPrice + " stopLossBreachLimit :" + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                                "Breached Take Profit Limit on negative Quantity. legLastPrice : " + legLastPrice + 
+                                " stopLossBreachLimit :" + String.format("%.2f",rangeLimitObj.takeProfitLimit) );
                     }
                     rangeLimitObj.takeProfitLimitBreached = true;
                     rangeLimitObj.deviation = 199;
@@ -634,11 +753,12 @@ public class SingleLegExit implements Runnable {
                 }
             } else {
                 if (debugFlag) {
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
+                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                            "Slot " + slotNumber + " " + legObj.symbol + "_" + legObj.tradingContractType + " : " + 
+                            "Zero Quantity. Inside Calculate Breach - Which is Error Condition");
                 }
             }
         }
-
     } // End of calculateBreachStkOrFut    
 
     void actOnBreach() {
@@ -701,14 +821,25 @@ public class SingleLegExit implements Runnable {
         ibInteractionClient.ibClient.reqOpenOrders();
         int timeOut = 0;
         boolean orderFilledStatus = false;
+        boolean orderCancelStatus = false;
         while ( !(orderFilledStatus) &&
+                !(orderCancelStatus) &&
                 (timeOut < maxWaitTime)) {
             if (ibInteractionClient.myOrderStatusDetails.containsKey(orderId) &&
                     (ibInteractionClient.myOrderStatusDetails.get(orderId).getRemainingQuantity() == 0) ) {
                 orderFilledStatus = true;
             }
+            if (ibInteractionClient.myOrderStatusDetails.containsKey(orderId) &&
+                    (ibInteractionClient.myOrderStatusDetails.get(orderId).getIBOrderStatus().equalsIgnoreCase("cancelled")) ) {
+                orderCancelStatus = true;
+            }
             if (debugFlag) {
-                System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Waiting for Order to be filled for  Order id " + orderId + " for " + timeOut + " seconds");
+                System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                        "Waiting for Order to be filled for  Order id " + orderId + 
+                        " for " + timeOut + " seconds" +
+                        " order Fill Status " + orderFilledStatus +
+                        " order Cancel Status " + orderCancelStatus                        
+                );
             }
             timeOut += 10;
             myUtils.waitForNSeconds(5);
@@ -805,75 +936,65 @@ public class SingleLegExit implements Runnable {
         return (returnOrderId);
     }
 
-    int requestBidAskForTradingContract(MyLegObjClass legDef) {
+    int requestTickDataSnapshotTradingContract(MyLegObjClass legDef) {
 
-        int reqId4BidAskDetails = 0;
-        if (legDef.tradingContractType.equalsIgnoreCase("OPT")) {
-            if (legDef.rightType.equalsIgnoreCase("CALL") || legDef.rightType.equalsIgnoreCase("C")) {
-                // Leg was bought at the the time of taking position. It would be sold for squaring off
-                reqId4BidAskDetails = ibInteractionClient.getBidAskPriceForOpt(legDef.symbol, legDef.futExpiry, legDef.rightType, legDef.strikePrice);
-            } else if (legDef.rightType.equalsIgnoreCase("PUT") || legDef.rightType.equalsIgnoreCase("P")) {
-                // for OPT type
-                reqId4BidAskDetails = ibInteractionClient.getBidAskPriceForOpt(legDef.symbol, legDef.futExpiry, legDef.rightType, legDef.strikePrice);
-            }                
-        } else {
-            if (legDef.qty > 0) {
-                // Leg was bought at the the time of taking position. It would be sold for squaring off
-                if (legDef.tradingContractType.equalsIgnoreCase("STK")) {
-                    // for STK type
-                    reqId4BidAskDetails = ibInteractionClient.getBidAskPriceForStk(legDef.symbol);
-                } else if (legDef.tradingContractType.equalsIgnoreCase("FUT")) {
-                    // for FUT type
-                    reqId4BidAskDetails = ibInteractionClient.getBidAskPriceForFut(legDef.symbol, legDef.futExpiry);
-                }
-            } else if (legDef.qty < 0) {
-                // Leg was shorted at the the time of taking position. leg would be bought for squaring off
-                if (legDef.tradingContractType.equalsIgnoreCase("STK")) {
-                    // for STK type
-                    reqId4BidAskDetails = ibInteractionClient.getBidAskPriceForStk(legDef.symbol);
-                } else if (legDef.tradingContractType.equalsIgnoreCase("FUT")) {
-                    // for FUT type
-                    reqId4BidAskDetails = ibInteractionClient.getBidAskPriceForFut(legDef.symbol, legDef.futExpiry);
-                }
-            }                
+        int reqId4TickSnapshot = 0;
+        if (legDef.tradingContractType.equalsIgnoreCase("STK")) {
+            // for STK type
+            reqId4TickSnapshot = ibInteractionClient.reqTickDataSnapshotForStk(legDef.symbol);
+        } else if (legDef.tradingContractType.equalsIgnoreCase("FUT")) {
+            // for FUT type
+            reqId4TickSnapshot = ibInteractionClient.reqTickDataSnapshotForFut(legDef.symbol, legDef.futExpiry);
+        } else if (legDef.tradingContractType.equalsIgnoreCase("OPT")) {
+            // for OPT type
+            reqId4TickSnapshot = ibInteractionClient.reqTickDataSnapshotForOpt(legDef.symbol, legDef.futExpiry, legDef.rightType, legDef.strikePrice);
         }
-
-        return(reqId4BidAskDetails);
+        return(reqId4TickSnapshot);
     }
-    
-    
+        
     void squareOffLegPosition(MyLegObjClass legDef) {
 
         if (positionQty != 0) {
-            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Squaring Off legId :" + legDef.legId + " : Symbol :" + legDef.symbol);
-
-
+            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                    "Squaring Off legId :" + legDef.legId + " : Symbol : " + legDef.symbol + " " + legDef.tradingContractType);
             setOpenPositionSlotOrderStatus("exitorderinitiated");
-            // Place market Order with IB for squaring Off
-            
-            int reqId4BidAskDetails = requestBidAskForTradingContract(legDef);
+            // Place market Order with IB for squaring Off            
+            int reqId4TickDataSnapshot = requestTickDataSnapshotTradingContract(legDef);
             if (legDef.tradingContractType.equalsIgnoreCase("OPT")) {
-                if (legDef.rightType.equalsIgnoreCase("CALL") || legDef.rightType.equalsIgnoreCase("C")) {
-                    // Leg was bought at the the time of taking position. It would be sold for squaring off
-                    // Place Order and get the order ID
-                    // for OPT type
-                    legOrderId = placeConfiguredOrder(legDef.symbol, Math.abs(legDef.lotSize), legDef.tradingContractType, legDef.futExpiry, legDef.rightType, legDef.strikePrice, "SELL");              
-                    bidAskDetails = legDef.symbol + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolAskPrice();
-                } else if (legDef.rightType.equalsIgnoreCase("PUT") || legDef.rightType.equalsIgnoreCase("P")) {
-                    // for OPT type
-                    legOrderId = placeConfiguredOrder(legDef.symbol, Math.abs(legDef.lotSize), legDef.tradingContractType, legDef.futExpiry, legDef.rightType, legDef.strikePrice, "SELL");              
-                    bidAskDetails = legDef.symbol + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolAskPrice();
-                }                
+                // Leg was bought at the the time of taking position. It would be sold for squaring off
+                // Place Order and get the order ID
+                // for OPT type                
+                legOrderId = placeConfiguredOrder(legDef.symbol, Math.abs(legDef.lotSize), legDef.tradingContractType, legDef.futExpiry, legDef.rightType, legDef.strikePrice, "SELL");
+                bidAskDetails = legDef.symbol + "_" + 
+                    ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolBidPrice() + "_" + 
+                    ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolAskPrice();                
             } else {
+                // For FUT and STK type, squaring off order depends on long or short position 
                 if (legDef.qty > 0) {
                     // Leg was bought at the the time of taking position. It would be sold for squaring off
                     // Place Order and get the order ID
-                    legOrderId = placeConfiguredOrder(legDef.symbol, Math.abs(legDef.lotSize), legDef.tradingContractType, legDef.futExpiry, legDef.rightType, legDef.strikePrice, "SELL");              
-                    bidAskDetails = legDef.symbol + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolAskPrice();
+                    legOrderId = placeConfiguredOrder(legDef.symbol, 
+                            Math.abs(legDef.lotSize), 
+                            legDef.tradingContractType, 
+                            legDef.futExpiry, 
+                            legDef.rightType, 
+                            legDef.strikePrice, 
+                            "SELL");              
+                    bidAskDetails = legDef.symbol + "_" + 
+                        ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolBidPrice() + "_" + 
+                        ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolAskPrice();
                 } else if (legDef.qty < 0) {
                     // Leg was shorted at the the time of taking position. leg would be bought for squaring off
-                    legOrderId = placeConfiguredOrder(legDef.symbol, Math.abs(legDef.lotSize), legDef.tradingContractType, legDef.futExpiry, legDef.rightType, legDef.strikePrice, "BUY");              
-                    bidAskDetails = legDef.symbol + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolAskPrice();
+                    legOrderId = placeConfiguredOrder(legDef.symbol, 
+                            Math.abs(legDef.lotSize), 
+                            legDef.tradingContractType, 
+                            legDef.futExpiry, 
+                            legDef.rightType, 
+                            legDef.strikePrice, 
+                            "BUY");              
+                    bidAskDetails = legDef.symbol + "_" + 
+                        ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolBidPrice() + "_" + 
+                        ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolAskPrice();
                 }                
             }
 
@@ -886,8 +1007,23 @@ public class SingleLegExit implements Runnable {
                     setOpenPositionSlotOrderStatus("exitorderfilled");
                     System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Exit Order filled for Order id " + legOrderId + " at avg filled price " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice());
                     legFilledPrice = ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice() * legObj.lotSize;
-                    bidAskDetails = legDef.symbol + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolAskPrice();
-                    bidAskDetails = bidAskDetails + "__" + legOrderId + "_" + legDef.symbol + "_" + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice();
+                    bidAskDetails = legDef.symbol + "_" + 
+                            ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolBidPrice() + "_" + 
+                            ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolAskPrice();
+                    bidAskDetails = bidAskDetails + "__" + 
+                            legOrderId + "_" + 
+                            legDef.symbol + "_" + 
+                            ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice();
+                    if (ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getContractDet().m_secType.equalsIgnoreCase("OPT")) {
+                        bidAskDetails = bidAskDetails + "_OPTIONGREEKS" +
+                                "_delta_" + String.format("%.4f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionDelta()) +
+                                "_gamma_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionGamma()) +
+                                "_impVol_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionImpliedVolatilityAtLastPrice()) +
+                                "_vega_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionVega()) +
+                                "_theta_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionTheta()) + 
+                                "_optPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionPrice()) + 
+                                "_underlyingPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionUnderlyingPrice()) ;                    
+                    }
                 } else {
                     int requestId = ibInteractionClient.requestExecutionDetailsHistorical(1);
                     // wait till details are received OR for timeput to happen
@@ -897,13 +1033,37 @@ public class SingleLegExit implements Runnable {
                         myUtils.waitForNSeconds(5);
                         timeOut = timeOut + 5;
                     }
-                    if (ibInteractionClient.myOrderStatusDetails.containsKey(legOrderId)) {
-                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Exit Order filled for Order id " + legOrderId + " at avg filled price " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice());
+                    if (ibInteractionClient.myOrderStatusDetails.containsKey(legOrderId) &&
+                            (ibInteractionClient.myOrderStatusDetails.get(legOrderId).getRemainingQuantity() == 0) &&
+                            (ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledQuantity() > 0) &&
+                            (ibInteractionClient.myOrderStatusDetails.get(legOrderId).getOrderId() == legOrderId) ) {
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Exit Order filled for Order id " + legOrderId + 
+                                " at avg filled price " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice());
                         legFilledPrice = ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice() * legObj.lotSize;
-                        bidAskDetails = legDef.symbol + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskDetails).getSymbolAskPrice();
-                        bidAskDetails = bidAskDetails + "__" + legOrderId + "_" + legDef.symbol + "_" + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice();
+                        bidAskDetails = legDef.symbol + "_" + 
+                                ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolBidPrice() + "_" + 
+                                ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getSymbolAskPrice();
+                        bidAskDetails = bidAskDetails + "__" + 
+                                legOrderId + "_" + 
+                                legDef.symbol + "_" + 
+                                ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice();
+                        if (ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getContractDet().m_secType.equalsIgnoreCase("OPT")) {
+                            bidAskDetails = bidAskDetails + "_OPTIONGREEKS" +
+                                    "_delta_" + String.format("%.4f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionDelta()) +
+                                    "_gamma_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionGamma()) +
+                                    "_impVol_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionImpliedVolatilityAtLastPrice()) +
+                                    "_vega_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionVega()) +
+                                    "_theta_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionTheta()) + 
+                                    "_optPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionPrice()) + 
+                                    "_underlyingPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqId4TickDataSnapshot).getOptionUnderlyingPrice()) ;                    
+                        }                        
+                    } else if (ibInteractionClient.myOrderStatusDetails.containsKey(legOrderId) &&
+                            (ibInteractionClient.myOrderStatusDetails.get(legOrderId).getIBOrderStatus().length() > 1)) {
+                        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
+                                "Please update exit order status for order ID " + legOrderId +
+                                " manually. Final Order Status " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getIBOrderStatus());                        
                     }
-                    System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Please update manually as exit Order initiated but did not receive Confirmation for Orders filling for Order id " + legOrderId);
                 }
             }
             // Make the position quantity as zero to indicate that square off Order has been placed. This would be used to exit the thread
@@ -945,7 +1105,7 @@ public class SingleLegExit implements Runnable {
             TradingObject myTradingObject = new TradingObject(myUtils.getHashMapValueFromRedis(jedisPool, openPositionsQueueKeyName, Integer.toString(slotNumber), debugFlag));
 
             double legLastSpread;
-            if ((tickObj.tradingSymbolLastPriceUpdateTime > 0) && (tickObj.tradingSymbolLastPriceUpdateTime >= tickObj.tradingSymbolClosePriceUpdateTime)) {
+            if ((tickObj.tradingSymbolTickUpdateTime > 0) && (tickObj.tradingSymbolLastPriceUpdateTime >= tickObj.tradingSymbolClosePriceUpdateTime)) {
                 legLastSpread = tickObj.tradingSymbolLastPrice * legObj.lotSize;
             } else {
                 legLastSpread = tickObj.tradingSymbolClosePrice * legObj.lotSize;

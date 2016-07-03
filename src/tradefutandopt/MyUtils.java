@@ -22,9 +22,11 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 import com.ib.client.Contract;
+import com.ib.client.OrderState;
+import com.ib.client.Order;
 import java.text.*;
 import java.util.*;
 import java.util.logging.*;
@@ -178,24 +180,44 @@ class MyExchangeClass {
 // Define class to store last updated prices, and time of it
 class MyTickObjClass {
 
-    private int requestId, symbolLastVolume;
+    private int requestId;
+    private int numberOfSubscribedClients;
+    private int symbolLastVolume, symbolBidVolume, symbolAskVolume;
     private double symbolLastPrice, symbolClosePrice, symbolBidPrice, symbolAskPrice;
+    private double optionImpliedVolatilityAtBidPrice, optionImpliedVolatilityAtAskPrice, optionImpliedVolatilityAtLastPrice;
+    private double optionDelta, optionPrice, optionPVDividend, optionGamma;
+    private double optionVega, optionTheta, optionUnderlyingPrice;        
     private long lastVolumeUpdateTime, lastPriceUpdateTime, closePriceUpdateTime, bidPriceUpdateTime, askPriceUpdateTime;
+    private long lastOptionsDataUpdateTime;
     private boolean subscriptionStatus;
     private Contract contractDet = new Contract();
 
     public MyTickObjClass(int requestId) {
         this.requestId = requestId;
+        this.numberOfSubscribedClients = 0;
         this.symbolLastVolume = 0;
+        this.symbolBidVolume = 0;
+        this.symbolAskVolume = 0;        
         this.symbolLastPrice = 0.0;
         this.symbolClosePrice = 0.0;
         this.symbolBidPrice = 0.0;
         this.symbolAskPrice = 0.0;
+        this.optionImpliedVolatilityAtAskPrice = 0.0;
+        this.optionImpliedVolatilityAtBidPrice = 0.0;
+        this.optionImpliedVolatilityAtLastPrice = 0.0;
+        this.optionDelta = 0.0;
+        this.optionPrice = 0.0;
+        this.optionPVDividend = 0.0;
+        this.optionGamma = 0.0;
+        this.optionVega = 0.0;
+        this.optionTheta = 0.0;
+        this.optionUnderlyingPrice = 0.0;        
         this.lastVolumeUpdateTime = -1;
         this.lastPriceUpdateTime = -1;
         this.closePriceUpdateTime = -1;
         this.bidPriceUpdateTime = -1;
         this.askPriceUpdateTime = -1;
+        this.lastOptionsDataUpdateTime = -1;
         this.subscriptionStatus = false;
     }
 
@@ -203,10 +225,22 @@ class MyTickObjClass {
         return this.requestId;
     }
 
+    public int getNumberOfSubscribedClients() {
+        return this.numberOfSubscribedClients;
+    }
+    
     public int getSymbolLastVolume() {
         return this.symbolLastVolume;
     }
 
+    public int getSymbolBidVolume() {
+        return this.symbolBidVolume;
+    }
+
+    public int getSymbolAskVolume() {
+        return this.symbolAskVolume;
+    }
+    
     public double getSymbolLastPrice() {
         return this.symbolLastPrice;
     }
@@ -242,7 +276,11 @@ class MyTickObjClass {
     public long getAskPriceUpdateTime() {
         return this.askPriceUpdateTime;
     }
-
+    
+    public long getOptionsDataUpdateTime() {
+        return this.lastOptionsDataUpdateTime;
+    }
+    
     public boolean getSubscriptionStatus() {
         return this.subscriptionStatus;
     }
@@ -255,6 +293,61 @@ class MyTickObjClass {
         return this.contractDet.m_secType;
     }
 
+    public double getOptionImpliedVolatilityAtAskPrice() {
+        return this.optionImpliedVolatilityAtAskPrice;
+    }
+    
+    public double getOptionImpliedVolatilityAtBidPrice() {
+        return this.optionImpliedVolatilityAtBidPrice;
+    }
+
+    public double getOptionImpliedVolatilityAtLastPrice() {
+        return this.optionImpliedVolatilityAtLastPrice;
+    }
+    
+    public double getOptionDelta() {
+        return this.optionDelta;
+    }    
+
+    public double getOptionPrice() {
+        return this.optionPrice;
+    }    
+
+    public double getOptionPVDividend() {
+        return this.optionPVDividend;
+    }    
+
+    public double getOptionGamma() {
+        return this.optionGamma;
+    }    
+
+    public double getOptionVega() {
+        return this.optionVega;
+    }    
+
+    public double getOptionTheta() {
+        return this.optionTheta;
+    }    
+
+    public double getOptionUnderlyingPrice() {
+        return this.optionUnderlyingPrice;
+    }
+        
+    public void setNumberOfSubscribedClients(int numClients) {
+        this.numberOfSubscribedClients = numClients;
+    }
+
+    public void incrementNumberOfSubscribedClients() {
+        this.numberOfSubscribedClients++;
+    }
+
+    public void decrementNumberOfSubscribedClients() {
+        this.numberOfSubscribedClients--;
+        if (this.numberOfSubscribedClients < 0) {
+            this.numberOfSubscribedClients = 0;
+        }
+    }
+    
     public void setRequestId(int requestId) {
         this.requestId = requestId;
     }
@@ -279,6 +372,14 @@ class MyTickObjClass {
         this.symbolAskPrice = price;
     }
 
+    public void setSymbolBidVolume(int volume) {
+        this.symbolBidVolume = volume;
+    }
+
+    public void setSymbolAskVolume(int volume) {
+        this.symbolAskVolume = volume;
+    }
+    
     public void setLastVolumeUpdateTime(long time) {
         this.lastVolumeUpdateTime = time;
     }
@@ -299,6 +400,50 @@ class MyTickObjClass {
         this.askPriceUpdateTime = time;
     }
 
+    public void setOptionsDataUpdateTime(long time) {
+        this.lastOptionsDataUpdateTime = time;
+    }
+    
+    public void setOptionImpliedVolatilityAtAskPrice(double impVol) {
+        this.optionImpliedVolatilityAtAskPrice = impVol;
+    }
+    
+    public void setOptionImpliedVolatilityAtBidPrice(double impVol) {
+        this.optionImpliedVolatilityAtBidPrice = impVol;
+    }
+    
+    public void setOptionImpliedVolatilityAtLastPrice(double impVol) {
+        this.optionImpliedVolatilityAtLastPrice = impVol;
+    }    
+
+    public void setOptionDelta(double delta) {
+        this.optionDelta = delta;
+    }    
+
+    public void setOptionPrice(double price) {
+        this.optionPrice = price;
+    }    
+
+    public void setOptionPVDividend(double dividend) {
+        this.optionPVDividend = dividend;
+    }    
+
+    public void setOptionGamma(double gamma) {
+        this.optionGamma = gamma;
+    }    
+
+    public void setOptionVega(double vega) {
+        this.optionVega = vega;
+    }    
+
+    public void setOptionTheta(double theta) {
+        this.optionTheta = theta;
+    }    
+
+    public void setOptionUnderlyingPrice(double undPrice) {
+        this.optionUnderlyingPrice = undPrice;
+    }    
+    
     public void setSubscriptionStatus(boolean subscriptionStatus) {
         this.subscriptionStatus = subscriptionStatus;
     }
@@ -362,19 +507,32 @@ class MyTickObjClass {
     }            
 }
 
+/*
 // Define class to store snapshot of Bid Ask price
 class MyBidAskPriceObjClass {
 
     int requestId, symbolBidVolume, symbolAskVolume;
     double symbolBidPrice, symbolAskPrice;
     long bidPriceUpdateTime, askPriceUpdateTime;
-
+    double optionImpliedVolatilityAtAskPrice, optionImpliedVolatilityAtBidPrice; 
+    double optionDelta, optionPrice, optionPVDividend, optionGamma;
+    double optionVega, optionTheta, optionUnderlyingPrice;        
+    
     public MyBidAskPriceObjClass(int requestId) {
         this.requestId = requestId;
         this.symbolBidVolume = 0;
         this.symbolAskVolume = 0;
         this.symbolBidPrice = 0.0;
         this.symbolAskPrice = 0.0;
+        this.optionImpliedVolatilityAtAskPrice = 0.0;
+        this.optionImpliedVolatilityAtBidPrice = 0.0;
+        this.optionDelta = 0.0;
+        this.optionPrice = 0.0;
+        this.optionPVDividend = 0.0;
+        this.optionGamma = 0.0;
+        this.optionVega = 0.0;
+        this.optionTheta = 0.0;
+        this.optionUnderlyingPrice = 0.0;                
         this.bidPriceUpdateTime = -1;
         this.askPriceUpdateTime = -1;
     }
@@ -406,6 +564,42 @@ class MyBidAskPriceObjClass {
     public long getAskPriceUpdateTime() {
         return this.askPriceUpdateTime;
     }
+    
+    public double getOptionImpliedVolatilityAtAskPrice() {
+        return this.optionImpliedVolatilityAtAskPrice;
+    }
+
+    public double getOptionImpliedVolatilityAtBidPrice() {
+        return this.optionImpliedVolatilityAtBidPrice;
+    }
+    
+    public double getOptionDelta() {
+        return this.optionDelta;
+    }    
+
+    public double getOptionPrice() {
+        return this.optionPrice;
+    }    
+
+    public double getOptionPVDividend() {
+        return this.optionPVDividend;
+    }    
+
+    public double getOptionGamma() {
+        return this.optionGamma;
+    }    
+
+    public double getOptionVega() {
+        return this.optionVega;
+    }    
+
+    public double getOptionTheta() {
+        return this.optionTheta;
+    }    
+
+    public double getOptionUnderlyingPrice() {
+        return this.optionUnderlyingPrice;
+    }
 
     public void setRequestId(int requestId) {
         this.requestId = requestId;
@@ -434,7 +628,44 @@ class MyBidAskPriceObjClass {
     public void setAskPriceUpdateTime(long time) {
         this.askPriceUpdateTime = time;
     }
+    
+    public void setOptionImpliedVolatilityAtAskPrice(double impVol) {
+        this.optionImpliedVolatilityAtAskPrice = impVol;
+    }
+
+    public void setOptionImpliedVolatilityAtBidPrice(double impVol) {
+        this.optionImpliedVolatilityAtBidPrice = impVol;
+    }
+    
+    public void setOptionDelta(double delta) {
+        this.optionDelta = delta;
+    }    
+
+    public void setOptionPrice(double price) {
+        this.optionPrice = price;
+    }    
+
+    public void setOptionPVDividend(double dividend) {
+        this.optionPVDividend = dividend;
+    }    
+
+    public void setOptionGamma(double gamma) {
+        this.optionGamma = gamma;
+    }    
+
+    public void setOptionVega(double vega) {
+        this.optionVega = vega;
+    }    
+
+    public void setOptionTheta(double theta) {
+        this.optionTheta = theta;
+    }    
+
+    public void setOptionUnderlyingPrice(double undPrice) {
+        this.optionUnderlyingPrice = undPrice;
+    }    
 }
+*/
 
 // Define class to get Order Status
 class MyOrderStatusObjClass {
@@ -445,6 +676,7 @@ class MyOrderStatusObjClass {
     private long updateTime;
     private String uniqueExecutionId, orderReference;
     private Contract contractDet = new Contract();
+    private String ibOrderStatus;
     
     public MyOrderStatusObjClass(int orderId) {
         this.orderId = orderId;
@@ -456,6 +688,7 @@ class MyOrderStatusObjClass {
         this.updateTime = -1;
         this.uniqueExecutionId = "";
         this.orderReference = "";
+        this.ibOrderStatus="";
     }
 
     public int getOrderId() {
@@ -498,6 +731,10 @@ class MyOrderStatusObjClass {
         return this.updateTime;
     }
 
+    public String getIBOrderStatus() {
+        return this.ibOrderStatus;
+    }
+    
     public void setOrderId(int orderId) {
         this.orderId = orderId;
     }
@@ -537,6 +774,10 @@ class MyOrderStatusObjClass {
     public void setContractDet(Contract contractDetails) {
         this.contractDet = contractDetails;
     }
+    
+    public void setIBOrderStatus(String orderStatus) {
+        this.ibOrderStatus = orderStatus;
+    }    
     
 }
 
@@ -1229,7 +1470,7 @@ public class MyUtils {
             jedisPool.returnResource(jedis);            
         }
     }
-    
+
     public void getOrderDetails2LocalDB(JedisPool jedisPool, String redisConfigurationKey, IBInteraction ibInteractionClient, boolean debugFlag) {
 
         int requestId = ibInteractionClient.requestExecutionDetailsHistorical(30);
@@ -1243,9 +1484,12 @@ public class MyUtils {
 
         Jedis jedis = jedisPool.getResource();
         try {
-            // retrieve map from redis  
-            Map<String, String> orderId2UniqueExecutionMapping = jedis.hgetAll("ORDERID2UNIQUEEXECUTIONIDMAPPING");
-            Map<String, String> orderExecutionRecords = jedis.hgetAll("IBORDEREXECUTIONRECORDS"); 
+            
+            String strategyName = getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "STRATEGYNAME", false);
+            // retrieve map from redis
+            jedis.select(1); // move to database 1
+            Map<String, String> orderId2UniqueExecutionMapping = jedis.hgetAll(strategyName + "ORDERID2UNIQUEEXECUTIONIDMAPPING");
+            Map<String, String> orderExecutionRecords = jedis.hgetAll(strategyName + "IBORDEREXECUTIONRECORDS"); 
 
             for (int orderId : ibInteractionClient.myOrderStatusDetails.keySet()) {            
                 orderId2UniqueExecutionMapping.put(Integer.toString(orderId), ibInteractionClient.myOrderStatusDetails.get(orderId).getUniqueExecutionId());
@@ -1273,8 +1517,8 @@ public class MyUtils {
                         ibInteractionClient.myOrderStatusDetails.get(orderId).getContractDet().m_localSymbol;                        
                 orderExecutionRecords.put(ibInteractionClient.myOrderStatusDetails.get(orderId).getUniqueExecutionId(), orderExecutionDetails);
             }
-            jedis.hmset("ORDERID2UNIQUEEXECUTIONIDMAPPING", orderId2UniqueExecutionMapping);
-            jedis.hmset("IBORDEREXECUTIONRECORDS", orderExecutionRecords);
+            jedis.hmset(strategyName + "ORDERID2UNIQUEEXECUTIONIDMAPPING", orderId2UniqueExecutionMapping);
+            jedis.hmset(strategyName + "IBORDEREXECUTIONRECORDS", orderExecutionRecords);
         } catch (JedisException e) {
             //if something wrong happen, return it back to the pool
             if (null != jedis) {

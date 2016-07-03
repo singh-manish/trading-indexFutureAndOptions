@@ -22,7 +22,7 @@
  SOFTWARE.
  
  */
-package tradingstkfutopt;
+package tradefutandopt;
 
 import java.util.Calendar;
 import java.util.TimeZone;
@@ -96,8 +96,8 @@ public class SingleLegEntry extends Thread {
                 futExpiry = myUtils.getKeyValueFromRedis(jedisPool, "USDOPTCURRENTEXPIRY", false);
             }
         } else if (contractTypeToUse.equalsIgnoreCase("STK")) {
-            // for STK type of action, mark futexpiry to 000000
-            futExpiry = "000000";
+            // for STK type of action, mark futexpiry to 00000000
+            futExpiry = "00000000";
         }        
         legName = myTradeObject.getTradingContractUnderlyingName();        
         if (myTradeObject.getSideAndSize() > 0) {
@@ -324,25 +324,25 @@ public class SingleLegEntry extends Thread {
         return(monitoringContractPrice);
     }
     
-    int requestBidAskForTradingContract() {
+    int requestTickDataSnapshotForTradingContract() {
 
-        int reqId4BidAskRequest = 0;
+        int reqId4TickSnapshotRequest = 0;
         // Place Order and get the order ID
         if (contractTypeToUse.equalsIgnoreCase("STK")) {
             // for STK type
-            reqId4BidAskRequest = ibInteractionClient.getBidAskPriceForStk(legName);
+            reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForStk(legName);
         } else if (contractTypeToUse.equalsIgnoreCase("FUT")) {
             // for FUT type
-            reqId4BidAskRequest = ibInteractionClient.getBidAskPriceForFut(legName, futExpiry);
+            reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForFut(legName, futExpiry);
         } else if (contractTypeToUse.equalsIgnoreCase("OPT")) {
             // for OPT type
             if (rightTypeToUse.equalsIgnoreCase("CALL") || rightTypeToUse.equalsIgnoreCase("C")) {
-                reqId4BidAskRequest = ibInteractionClient.getBidAskPriceForCallOption(legName, futExpiry, strikePriceToUse);
+                reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForCallOption(legName, futExpiry, strikePriceToUse);
             } else if (rightTypeToUse.equalsIgnoreCase("PUT") || rightTypeToUse.equalsIgnoreCase("P")) {
-                reqId4BidAskRequest = ibInteractionClient.getBidAskPriceForPutOption(legName, futExpiry, strikePriceToUse);
+                reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForPutOption(legName, futExpiry, strikePriceToUse);
             }            
         }
-        return(reqId4BidAskRequest);
+        return(reqId4TickSnapshotRequest);
     }
   
     boolean enterLegPosition() {
@@ -353,22 +353,32 @@ public class SingleLegEntry extends Thread {
 
         double legSpread = 0.0;
         double legMonitoringContractPrice = this.getMonitoringContractPrice();
-        int reqId4BidAskRequest = this.requestBidAskForTradingContract();
+        int reqIdTickSnapshot = this.requestTickDataSnapshotForTradingContract();
         
         int legOrderId = this.myPlaceConfiguredOrder(legName, legLotSize, legPosition);
         legMonitoringContractPrice = this.getMonitoringContractPrice();
 
         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Placed Orders - with orderID as : " + legOrderId + " for " + legPosition);
-
-        String bidAskDetails = legName + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskRequest).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskRequest).getSymbolAskPrice();
+        String bidAskDetails = legName + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolBidPrice() + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolAskPrice();
         // update the Open position queue with order inititated status message
         updateOpenPositionsQueue(openPositionsQueueKeyName, legDetails, "entryorderinitiated", legSpread, legOrderId, slotNumber, bidAskDetails, legMonitoringContractPrice);
 
         if (legOrderId > 0) {
             // Wait for orders to be completely filled            
             if (entryOrderCompletelyFilled(legOrderId, 750)) {
-                bidAskDetails = legName + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskRequest).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskRequest).getSymbolAskPrice();
+                bidAskDetails = legName + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolBidPrice() + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolAskPrice();
                 bidAskDetails = bidAskDetails + "__" + legOrderId + "_" + legName + "_" + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice();
+                if (ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getContractDet().m_secType.equalsIgnoreCase("OPT")) {
+                    bidAskDetails = bidAskDetails + "_OPTIONGREEKS" +
+                            "_delta_" + String.format("%.4f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionDelta()) +
+                            "_gamma_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionGamma()) +
+                            "_impVol_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionImpliedVolatilityAtLastPrice()) +
+                            "_vega_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionVega()) +
+                            "_theta_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionTheta()) + 
+                            "_optPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionPrice()) + 
+                            "_underlyingPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionUnderlyingPrice())
+                            ;                    
+                }                
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Entry Order leg filled for  Order id " + legOrderId + " order side " + legPosition + " at avg filled price " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice());
                 legSpread = ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice() * legLotSize;
                 // update Redis queue with entered order
@@ -382,9 +392,19 @@ public class SingleLegEntry extends Thread {
                     myUtils.waitForNSeconds(5);
                     timeOut = timeOut + 5;
                 }
-                bidAskDetails = legName + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskRequest).getSymbolBidPrice() + "_" + ibInteractionClient.myBidAskPriceDetails.get(reqId4BidAskRequest).getSymbolAskPrice();
+                bidAskDetails = legName + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolBidPrice() + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolAskPrice();
                 bidAskDetails = bidAskDetails + "__" + legOrderId + "_" + legName + "_" + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice();
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Entry Order leg filled for  Order id " + legOrderId + " order side " + legPosition + " at avg filled price " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice());
+                if (ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getContractDet().m_secType.equalsIgnoreCase("OPT")) {
+                    bidAskDetails = bidAskDetails + "_OPTIONGREEKS" +
+                            "_delta_" + String.format("%.4f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionDelta()) +
+                            "_gamma_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionGamma()) +
+                            "_impVol_" + String.format("%.5f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionImpliedVolatilityAtLastPrice()) +
+                            "_vega_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionVega()) +
+                            "_theta_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionTheta()) + 
+                            "_optPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionPrice()) + 
+                            "_underlyingPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionUnderlyingPrice()) ;                    
+                }                
                 legSpread = ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice() * legLotSize;
                 // update Redis queue with entered order
                 updateOpenPositionsQueue(openPositionsQueueKeyName, legDetails, "entryorderinitiated", legSpread, legOrderId, slotNumber, bidAskDetails, legMonitoringContractPrice);
