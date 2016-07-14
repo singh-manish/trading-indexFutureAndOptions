@@ -999,11 +999,6 @@ public class MyUtils {
 
         Jedis jedis;
         String openPositionsQueueKeyName = getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "OPENPOSITIONSQUEUE", debugFlag);
-        int maxNumPositions = Integer.parseInt(getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMLONGPOSITIONS", debugFlag))
-                + Integer.parseInt(getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "MAXNUMSHORTPOSITIONS", debugFlag));
-        if (debugFlag) {
-            System.out.println(" Maximum Allowed Positions " + maxNumPositions);
-        }
 
         Map<String, String> updatedMap = new HashMap<String, String>();
         int targetSlotNum = 1;

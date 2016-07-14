@@ -141,6 +141,24 @@ public class IBInteraction implements EWrapper {
 
     } // End of waitForConnection
 
+    int reqTickDataSnapshotForInd(String symbol) {
+        
+        int requestId = this.getNextRequestId();            
+        myTickDetails.put(requestId, new MyTickObjClass(requestId));
+        myTickDetails.get(requestId).setRequestId(requestId);
+        //(String symbol, String currency, String securityType, String exchange, String expiry)            
+        myTickDetails.get(requestId).setContractDetInd(symbol, myExchangeObj.getExchangeCurrency(), myExchangeObj.getExchangeName());
+        myTickDetails.get(requestId).setSubscriptionStatus(false);
+        ibClient.reqMktData(requestId, myTickDetails.get(requestId).getContractDet(), "", true);
+        requestsCompletionStatus.put(requestId, Boolean.FALSE);
+        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
+                "IB Request Info : requesting bid ask for " + myTickDetails.get(requestId).getContractDet().m_symbol +
+                " type " + myTickDetails.get(requestId).getContractDet().m_secType +
+                " against reqId " + requestId);
+        return(requestId);
+        
+    } // End of getBidAskPriceForInd    
+    
     int reqTickDataSnapshotForStk(String symbol) {
         
         int requestId = this.getNextRequestId();            
@@ -475,7 +493,17 @@ public class IBInteraction implements EWrapper {
     int requestExecutionDetailsHistorical(int numPrevDays) {
 
         Calendar startingTimeStamp = Calendar.getInstance(myExchangeObj.getExchangeTimeZone());
-        startingTimeStamp.add(Calendar.DATE, -1 * numPrevDays);
+        // IB is throwing error - -'fe' : cau       se - Only the default client (i.e 0) can auto bind orders
+        // root cause could be askign for execution history of more than 7 days.
+        // API documentation says that by default only past 24 hours executions could be requecsted. for more
+        // one has to requet only when TWS is open and trade logs are being shown
+        // in case error message persists, then reduce this 7 to 1 and change the logic in program to 
+        //call this more frequectly
+        if (numPrevDays < 7) {
+            startingTimeStamp.add(Calendar.DATE, -1 * numPrevDays);        
+        } else {
+            startingTimeStamp.add(Calendar.DATE, -1 * numPrevDays);            
+        }
 
         String startTime = String.format("%1$tY%1$tm%1$td-00:00:00", startingTimeStamp); // format is - yyyymmdd-hh:mm:ss
 

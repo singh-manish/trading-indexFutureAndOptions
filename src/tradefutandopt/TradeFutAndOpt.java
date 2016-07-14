@@ -121,17 +121,7 @@ public class TradeFutAndOpt {
 
             // Reuqest auto binding for all open orders
             myComboTradingSystem.ibInteractionClient.ibClient.reqAutoOpenOrders(true);
-            
-            // Subscribe to Market Index
-            int marketIndexReqId = 0;
-            int bankNiftyIndexReqId = 0;
-            if (myExchangeObj.getExchangeCurrency().equalsIgnoreCase("INR")) {
-                marketIndexReqId = myComboTradingSystem.ibInteractionClient.requestIndMktDataSubscription("NIFTY50");
-                bankNiftyIndexReqId = myComboTradingSystem.ibInteractionClient.requestIndMktDataSubscription("BANKNIFTY");                
-            } else if (myExchangeObj.getExchangeCurrency().equalsIgnoreCase("USD")) {
-                marketIndexReqId = myComboTradingSystem.ibInteractionClient.requestIndMktDataSubscription("SNP500");
-            }
-            
+                        
             //Get order details of executed order from IB to redis hashmap - will help construct reports anytime irrespective of IB being available or not  
             myUtils.getOrderDetails2LocalDB(jedisPool, redisConfigurationKey, myComboTradingSystem.ibInteractionClient, true);
             
@@ -144,7 +134,7 @@ public class TradeFutAndOpt {
             monitorEntrySignalsQueue.start();
 
             // Spawn a thread to monitor EOD entry/exit signals queue
-            MonitorEODSignals monitorEODEntryExitSignalsQueue = new MonitorEODSignals("MonitoringEODEntryExitSignalsThread", jedisPool, redisConfigurationKey, myUtils, myExchangeObj, myComboTradingSystem.ibInteractionClient,  debugFlag);
+            MonitorEODSignals monitorEODEntryExitSignalsQueue = new MonitorEODSignals("MonitoringEODEntryExitSignalsThread", jedisPool, redisConfigurationKey, myUtils, myExchangeObj, debugFlag);
             monitorEODEntryExitSignalsQueue.start();
             
             // Spawn a thread to read the current open positions from Redis queue
@@ -161,22 +151,11 @@ public class TradeFutAndOpt {
             boolean exitNow = false;
             while (!exitNow) {
                 Calendar timeNow = Calendar.getInstance(myExchangeObj.getExchangeTimeZone());
-                if ( (Integer.parseInt(String.format("%1$tM%1$tS", timeNow)) % 1000 == 0) ) {           
-                    int numIndexWatchers = 0;
-                    if (myComboTradingSystem.ibInteractionClient.myTickDetails.containsKey(marketIndexReqId)) {
-                        numIndexWatchers = myComboTradingSystem.ibInteractionClient.myTickDetails.get(marketIndexReqId).getNumberOfSubscribedClients();                            
-                    }
-
-                    int numBankNiftyIndexWatchers = 0;
-                    if (myComboTradingSystem.ibInteractionClient.myTickDetails.containsKey(bankNiftyIndexReqId)) {
-                        numBankNiftyIndexWatchers = myComboTradingSystem.ibInteractionClient.myTickDetails.get(bankNiftyIndexReqId).getNumberOfSubscribedClients();                            
-                    }                    
+                if ( (Integer.parseInt(String.format("%1$tM%1$tS", timeNow)) % 1000 == 0) ) {
                     // output hearbeat message
                     System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) +
                         "Hearbeat For Main Program. " +
-                        "IB Connection Status " + myComboTradingSystem.ibInteractionClient.ibClient.isConnected() +
-                        "# of threads watching Index " + numIndexWatchers +
-                        "# of threads watching Bank Nifty Index " + numBankNiftyIndexWatchers);                    
+                        "IB Connection Status " + myComboTradingSystem.ibInteractionClient.ibClient.isConnected() );
                 }
                 // Provision for exiting if time has reached outside market hours or on weekends for NSE
                 if (Integer.parseInt(String.format("%1$tH%1$tM%1$tS", timeNow)) >= myExchangeObj.getExchangeCloseTimeHHMMSS()) {
@@ -189,8 +168,6 @@ public class TradeFutAndOpt {
                     myUtils.waitForNSeconds(120);                
                 }
             }
-            myComboTradingSystem.ibInteractionClient.cancelMktDataSubscription(marketIndexReqId);
-            myComboTradingSystem.ibInteractionClient.cancelMktDataSubscription(bankNiftyIndexReqId);
                         
             //Get order details of executed order from IB to redis hashmap - will help construct reports anytime irrespective of IB being available or not
             myUtils.getOrderDetails2LocalDB(jedisPool, redisConfigurationKey, myComboTradingSystem.ibInteractionClient, true);

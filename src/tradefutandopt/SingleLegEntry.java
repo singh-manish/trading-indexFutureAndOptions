@@ -344,7 +344,27 @@ public class SingleLegEntry extends Thread {
         }
         return(reqId4TickSnapshotRequest);
     }
-  
+
+    int requestTickDataSnapshotForMonitoringContract() {
+
+        int reqId4TickSnapshotRequest = 0;
+        // Place Order and get the order ID
+        if (monitoringContractTypeToUse.equalsIgnoreCase("IND")) {
+            // for IND type
+            reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForInd(legName);
+        } else if (monitoringContractTypeToUse.equalsIgnoreCase("STK")) {
+            // for STK type
+            reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForStk(legName);
+        } else if (monitoringContractTypeToUse.equalsIgnoreCase("FUT")) {
+            // for FUT type
+            reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForFut(legName, futExpiry);
+        } else if (monitoringContractTypeToUse.equalsIgnoreCase("OPT")) {
+            // for OPT type
+            reqId4TickSnapshotRequest = ibInteractionClient.reqTickDataSnapshotForOpt(legName, futExpiry, rightTypeToUse, strikePriceToUse);
+        }
+        return(reqId4TickSnapshotRequest);
+    }
+    
     boolean enterLegPosition() {
       
         boolean orderFillStatus = false;
@@ -354,6 +374,7 @@ public class SingleLegEntry extends Thread {
         double legSpread = 0.0;
         double legMonitoringContractPrice = this.getMonitoringContractPrice();
         int reqIdTickSnapshot = this.requestTickDataSnapshotForTradingContract();
+        int reqIdMonitoringTickSnapshot = this.requestTickDataSnapshotForMonitoringContract();
         
         int legOrderId = this.myPlaceConfiguredOrder(legName, legLotSize, legPosition);
         legMonitoringContractPrice = this.getMonitoringContractPrice();
@@ -361,6 +382,7 @@ public class SingleLegEntry extends Thread {
         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Placed Orders - with orderID as : " + legOrderId + " for " + legPosition);
         String bidAskDetails = legName + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolBidPrice() + "_" + ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getSymbolAskPrice();
         // update the Open position queue with order inititated status message
+        legMonitoringContractPrice = ibInteractionClient.myTickDetails.get(reqIdMonitoringTickSnapshot).getSymbolLastPrice();
         updateOpenPositionsQueue(openPositionsQueueKeyName, legDetails, "entryorderinitiated", legSpread, legOrderId, slotNumber, bidAskDetails, legMonitoringContractPrice);
 
         if (legOrderId > 0) {
@@ -381,6 +403,7 @@ public class SingleLegEntry extends Thread {
                 }                
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Entry Order leg filled for  Order id " + legOrderId + " order side " + legPosition + " at avg filled price " + ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice());
                 legSpread = ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice() * legLotSize;
+                legMonitoringContractPrice = ibInteractionClient.myTickDetails.get(reqIdMonitoringTickSnapshot).getSymbolLastPrice();
                 // update Redis queue with entered order
                 updateOpenPositionsQueue(openPositionsQueueKeyName, legDetails, "entryorderfilled", legSpread, legOrderId, slotNumber, bidAskDetails, legMonitoringContractPrice);
             } else {
@@ -406,6 +429,7 @@ public class SingleLegEntry extends Thread {
                             "_underlyingPrice_" + String.format("%.3f", ibInteractionClient.myTickDetails.get(reqIdTickSnapshot).getOptionUnderlyingPrice()) ;                    
                 }                
                 legSpread = ibInteractionClient.myOrderStatusDetails.get(legOrderId).getFilledPrice() * legLotSize;
+                legMonitoringContractPrice = ibInteractionClient.myTickDetails.get(reqIdMonitoringTickSnapshot).getSymbolLastPrice();
                 // update Redis queue with entered order
                 updateOpenPositionsQueue(openPositionsQueueKeyName, legDetails, "entryorderinitiated", legSpread, legOrderId, slotNumber, bidAskDetails, legMonitoringContractPrice);
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + "Please Check Order Status manually as entry Order initiated but did not receive Confirmation for Orders filling for Order id " + legOrderId);

@@ -213,35 +213,7 @@ public class SingleLegExit implements Runnable {
                 }
             }
 
-            if (rangeLimitObj.updatedtime < 0) {
-                // This is first time monitoring has started as last update time is -1 or less than zero
-                if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
-                    if (legObj.rightType.equalsIgnoreCase("CALL") || legObj.rightType.equalsIgnoreCase("C")) {
-                        // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
-                        rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialStopLoss);
-                        rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialTakeProfit);
-                    } else if (legObj.rightType.equalsIgnoreCase("PUT") || legObj.rightType.equalsIgnoreCase("P")) {
-                        // it is short position. Lower Breach is higher than current level while upper breach is lower than current level
-                        rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialStopLoss);
-                        rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialTakeProfit);
-                    }                    
-                } else {
-                    if (legObj.qty > 0) {
-                        // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
-                        rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialStopLoss);
-                        rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialTakeProfit);
-                    } else if (legObj.qty < 0) {
-                        // it is short. Lower Breach is higher than current level while upper breach is lower than current level
-                        rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialStopLoss);
-                        rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialTakeProfit);
-                    }                    
-                }
-            } else {
-                // restarting the monitoring as last updated time is positive/greater than zero
-                rangeLimitObj.stopLossLimit = Double.parseDouble(myTradeObject.getMonitoringContractLowerBreach());
-                rangeLimitObj.takeProfitLimit = Double.parseDouble(myTradeObject.getMonitoringContractUpperBreach());
-            }
-
+            resetBreachLimits();
         }
 
         positionQty = legObj.qty;
@@ -249,6 +221,42 @@ public class SingleLegExit implements Runnable {
 
     }
 
+    void resetBreachLimits() {
+
+        legDetails = myUtils.getHashMapValueFromRedis(jedisPool, openPositionsQueueKeyName, Integer.toString(slotNumber), debugFlag);
+
+        TradingObject myTradeObject = new TradingObject(legDetails);
+        
+        if ((rangeLimitObj.updatedtime < 0) || (rangeLimitObj.stopLossLimit <= 0) || (rangeLimitObj.takeProfitLimit <= 0)) {
+            // This is first time monitoring has started as last update time is -1 or less than zero
+            if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
+                if (legObj.rightType.equalsIgnoreCase("CALL") || legObj.rightType.equalsIgnoreCase("C")) {
+                    // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
+                    rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialStopLoss);
+                    rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialTakeProfit);
+                } else if (legObj.rightType.equalsIgnoreCase("PUT") || legObj.rightType.equalsIgnoreCase("P")) {
+                    // it is short position. Lower Breach is higher than current level while upper breach is lower than current level
+                    rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialStopLoss);
+                    rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialTakeProfit);
+                }                    
+            } else {
+                if (legObj.qty > 0) {
+                    // it is long position. Lower Breach is lower than current level while upper breach is higher than current level
+                    rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialStopLoss);
+                    rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialTakeProfit);
+                } else if (legObj.qty < 0) {
+                    // it is short. Lower Breach is higher than current level while upper breach is lower than current level
+                    rangeLimitObj.stopLossLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) + initialStopLoss);
+                    rangeLimitObj.takeProfitLimit = (Double.parseDouble(myTradeObject.getMonitoringContractEntryPrice()) - initialTakeProfit);
+                }                    
+            }
+        } else {
+            // restarting the monitoring as last updated time is positive/greater than zero
+            rangeLimitObj.stopLossLimit = Double.parseDouble(myTradeObject.getMonitoringContractLowerBreach());
+            rangeLimitObj.takeProfitLimit = Double.parseDouble(myTradeObject.getMonitoringContractUpperBreach());
+        }
+    }
+            
     long findMaxTimestamps(long... vals) {
        long max = Long.MIN_VALUE;
 
@@ -275,7 +283,9 @@ public class SingleLegExit implements Runnable {
                     " expiry " + legObj.futExpiry +
                     " right " + legObj.rightType +
                     " strike " + legObj.strikePrice +
+                    " trading contract entry spread " + legObj.legEntrySpread +
                     " monitoring contract " + legObj.symbol + " " + legObj.monitoringContractType +
+                    " monitoring contract price at entry " + legObj.monitoringSymbolEntryPrice +                    
                     " ");
         } else {
             System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(exchangeTimeZone)) + 
@@ -622,11 +632,15 @@ public class SingleLegExit implements Runnable {
     }
 
     void calculateBreach() {
-        if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
-            calculateBreachOpt();
+        if ( (rangeLimitObj.stopLossLimit > 0) && (rangeLimitObj.takeProfitLimit > 0) ) {
+            if (legObj.tradingContractType.equalsIgnoreCase("OPT")) {
+                calculateBreachOpt();
+            } else {
+               calculateBreachStkOrFut(); 
+            }            
         } else {
-           calculateBreachStkOrFut(); 
-        }        
+            resetBreachLimits();
+        }
     }
     
     void calculateBreachOpt() {
