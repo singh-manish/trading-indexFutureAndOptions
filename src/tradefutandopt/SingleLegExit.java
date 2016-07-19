@@ -298,7 +298,7 @@ public class SingleLegExit implements Runnable {
 
         TimeZone.setDefault(exchangeTimeZone);
         while (!quit) {
-            myUtils.waitForNMiliSeconds(1000); // Check every 1 sec. Can be made more frequent but not sure if adds any value.                       
+            myUtils.waitForNMiliSeconds(50); // Check every 50 millisec. Can be made more frequent but not sure if adds any value.                       
             Calendar timeNow = Calendar.getInstance(exchangeTimeZone);
             int lastExitOrderTime = 1528;
             String lastExitOrderTimeConfigValue = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "LASTEXITORDERTIME", false);
@@ -855,11 +855,11 @@ public class SingleLegExit implements Runnable {
                         " order Cancel Status " + orderCancelStatus                        
                 );
             }
-            timeOut += 10;
-            myUtils.waitForNSeconds(5);
+            timeOut += 2;
+            myUtils.waitForNSeconds(1);
             // Check if following needs to be commented
             ibInteractionClient.ibClient.reqOpenOrders();
-            myUtils.waitForNSeconds(5);
+            myUtils.waitForNSeconds(1);
         }
         if (ibInteractionClient.myOrderStatusDetails.containsKey(orderId) &&
                 (ibInteractionClient.myOrderStatusDetails.get(orderId).getRemainingQuantity() == 0) ) {

@@ -706,46 +706,18 @@ public class MonitorEODSignals extends Thread {
 
     void processExitPartOfSignal(MyEntrySignalParameters signalParam) {
 
-        if ((signalParam.RLSignal < 99) && (signalParam.RLSignal < 0 )) {
-            // square off all long positions and take one short position
-            squareOffAllLongPositions("exitSignal",signalParam.elementName);
-        } else if ((signalParam.RLSignal < 99) && (signalParam.RLSignal > 0 )) {
-            // square off all short positions and take one long position
-            squareOffAllShortPositions("exitSignal",signalParam.elementName);
-        }
-    } // End of Method
-
-    void processEntryAndExitSignal(MyEntrySignalParameters signalParam) {
-        // RLSIGNAL - Reinforced Learning Signal - can take values 0, +1, -1 
-        // 0 meaning non action necessary
-        // +1 meaning recommended Buy if no position/Square off if existing Short position
-        // -1 meaning recommended Sell if no position/Square off if existing Long position
-
-        // trading rule implemented :
-        // if no position for given symbol then take position as per RLSIGNAL
-        // if RLSIGNAL is -1 then
-        //   square off all long positions and take one short position
-        // else if RLSIGNAL is +1 then
-        //   square off all short positions and take one long position
-        // for taking position, send form the signal and send to entrySignalsQueue
-        // for square off, send signal to manual intervention queue
-
-        if ((signalParam.RLSignal < 99) && (signalParam.RLSignal < 0 )) {
-            // square off all long positions and take one short position
-            squareOffAllLongPositions("exitSignal",signalParam.elementName);
-        } else if ((signalParam.RLSignal < 99) && (signalParam.RLSignal > 0 )) {
-            // square off all short positions and take one long position
-            squareOffAllShortPositions("exitSignal",signalParam.elementName);
-        }
-        // Now check if there exists any position of the same side as signal.
-        // If no then take one position. 
-        // If already exists a position of same side, then check for rollover day
-        if ( (signalParam.RLSignal < 99) && (signalParam.tradeSide != 0) &&
-                (getNumPositionsGivenTimeSlotGivenSide(signalParam.elementName, signalParam.timeSlot, signalParam.tradeSide) <= 0) ) {
-                // since no position for given symbol for given side so take position as per RLSIGNAL
-                sendEntrySignal(entrySignalsQueueKeyName, signalParam);
-        } else {
-            processRollOverOnly(signalParam);
+        if (signalParam.RLSignal < 99) {
+            if (signalParam.RLSignal < 0 ) {
+                // square off all long positions
+                squareOffAllLongPositions("exitSignal", signalParam.elementName);
+            } else if (signalParam.RLSignal > 0 ) {
+                // square off all short positions
+                squareOffAllShortPositions("exitSignal", signalParam.elementName);
+            }
+        } else if ((signalParam.RLSignal >= 99) &&
+            currentSignalSideMatchesSymbolsPrevSignalSide(signalParam, signalParam.elementName)) {
+            // square off all positions
+            processExitSignalForAllPositions("exitDue2ReachingUnknownState", signalParam.elementName);
         }
     } // End of Method
         
@@ -754,9 +726,9 @@ public class MonitorEODSignals extends Thread {
         // square off all positions
         squareOffAllLongPositions(exitReason, elementName);
         squareOffAllShortPositions(exitReason, elementName);
-    } 
+    }
     
-    boolean currentSignalSideMatchesCurrentNiftySignalSide(MyEntrySignalParameters signalParam) {    
+    boolean currentSignalSideMatchesSymbolsCurrentSignalSide(MyEntrySignalParameters signalParam, String symbol) {    
 
         boolean retValue = false;
         
@@ -764,20 +736,21 @@ public class MonitorEODSignals extends Thread {
         
         // find index of signal of previous one hour slot
         int index = 0;
-        String prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+        String signalArchiveName = symbol + "SIGNALSARCHIVE";
+        String prevSignal = jedis.lindex(signalArchiveName, index);
         int prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
         int prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         
         if (prevSignalTimeSlot != signalParam.timeSlot) {
             // proceed only if timeslots are same. if timeslot not matches, try next one as signals are half an hour interval
             index++;
-            prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+            prevSignal = jedis.lindex(signalArchiveName, index);
             prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
             prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         }
 
         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-        "Info : Current Nifty Signal : " + prevSignal);
+        "Info : Current " + symbol + " Signal : " + prevSignal);
         jedisPool.returnResource(jedis);        
         
         if (prevSignalTimeSlot == signalParam.timeSlot) {
@@ -786,17 +759,17 @@ public class MonitorEODSignals extends Thread {
                 retValue = true;
             } else {
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-                "Info : Current RL Signal does not match Current Nifty RL signal. Current Nifty Signal : " + prevSignal);            
+                "Info : Current RL Signal does not match Current " + symbol + " RL signal. Current " + symbol + " Signal : " + prevSignal);            
             }            
         } else {
             System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-            "Info : Could not find Current Nifty RL signal having same timeslot as Current RL Signal. Current Nifty Signal : " + prevSignal);            
+            "Info : Could not find Current " + symbol + " RL signal having same timeslot as Current RL Signal. Current " + symbol + " Signal : " + prevSignal);            
         }
         
         return(retValue);
     }
 
-    boolean currentSignalSideOpposesCurrentNiftySignalSide(MyEntrySignalParameters signalParam) {    
+    boolean currentSignalSideOpposesSymbolsCurrentSignalSide(MyEntrySignalParameters signalParam, String symbol) {    
 
         boolean retValue = false;
         
@@ -804,20 +777,21 @@ public class MonitorEODSignals extends Thread {
         
         // find index of signal of previous one hour slot
         int index = 0;
-        String prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+        String signalArchiveName = symbol + "SIGNALSARCHIVE";        
+        String prevSignal = jedis.lindex(signalArchiveName, index);
         int prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
         int prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         
         if (prevSignalTimeSlot != signalParam.timeSlot) {
             // proceed only if timeslots are same. if timeslot not matches, try next one as signals are half an hour interval
             index++;
-            prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+            prevSignal = jedis.lindex(signalArchiveName, index);
             prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
             prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         }
 
         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-        "Info : Current Nifty Signal : " + prevSignal);
+        "Info : Current " + symbol + " Signal : " + prevSignal);
         jedisPool.returnResource(jedis);        
         
         if (prevSignalTimeSlot == signalParam.timeSlot) {
@@ -826,17 +800,17 @@ public class MonitorEODSignals extends Thread {
                 retValue = true;
             } else {
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-                "Info : Current RL Signal does not oppose Current Nifty RL signal. Current Nifty Signal : " + prevSignal);            
+                "Info : Current RL Signal does not oppose Current " + symbol + " RL signal. Current " + symbol + " Signal : " + prevSignal);            
             }            
         } else {
             System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-            "Info : Could not find Current Nifty RL signal having same timeslot as Current RL Signal. Current Nifty Signal : " + prevSignal);
+            "Info : Could not find Current " + symbol + " RL signal having same timeslot as Current RL Signal. Current " + symbol + " Signal : " + prevSignal);
         }
         
         return(retValue);
     }
-
-    boolean currentSignalSideMatchesPrevNiftySignalSide(MyEntrySignalParameters signalParam) {    
+    
+    boolean currentSignalSideMatchesSymbolsPrevSignalSide(MyEntrySignalParameters signalParam,String symbol) {    
 
         boolean retValue = false;
         
@@ -844,7 +818,8 @@ public class MonitorEODSignals extends Thread {
         
         // find index of signal of previous one hour slot
         int index = 0;
-        String prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+        String signalArchiveName = symbol + "SIGNALSARCHIVE";           
+        String prevSignal = jedis.lindex(signalArchiveName, index);
         int prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
         int prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         
@@ -853,24 +828,24 @@ public class MonitorEODSignals extends Thread {
             index++;
         }
         index = index + 1; // signals are at half hour interval.
-        prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+        prevSignal = jedis.lindex(signalArchiveName, index);
         prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
         prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         
         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-        "Info : Prev Nifty Signal : " + prevSignal);
+        "Info : Prev " + symbol + " Signal : " + prevSignal);
         jedisPool.returnResource(jedis);        
 
         if (prevSignalRLSignal == signalParam.RLSignal) {
             retValue = true;
         } else {
             System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-            "Info : Current RL Signal does not match Prev Nifty RL signal. prev Nifty Signal : " + prevSignal);            
+            "Info : Current RL Signal does not match Prev " + symbol + " RL signal. prev " + symbol + " Signal : " + prevSignal);            
         }
         return(retValue);
     }
     
-    boolean currentSignalSideOpposesPrevNiftySignalSide(MyEntrySignalParameters signalParam) {    
+    boolean currentSignalSideOpposesSymbolsPrevSignalSide(MyEntrySignalParameters signalParam, String symbol) {    
 
         boolean retValue = false;
         
@@ -878,7 +853,8 @@ public class MonitorEODSignals extends Thread {
         
         // find index of signal of previous one hour slot
         int index = 0;
-        String prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+        String signalArchiveName = symbol + "SIGNALSARCHIVE";         
+        String prevSignal = jedis.lindex(signalArchiveName, index);
         int prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
         int prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         
@@ -887,53 +863,19 @@ public class MonitorEODSignals extends Thread {
             index++;
         }
         index = index + 1; // signals are at half hour interval.
-        prevSignal = jedis.lindex("NIFTY50SIGNALSARCHIVE", index);
+        prevSignal = jedis.lindex(signalArchiveName, index);
         prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
         prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
         
         System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-        "Info : Prev Nifty Signal : " + prevSignal);
+        "Info : Prev " + symbol + " Signal : " + prevSignal);
         jedisPool.returnResource(jedis);        
 
         if (prevSignalRLSignal == (-1*signalParam.RLSignal)) {
             retValue = true;
         } else {
             System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-            "Info : Current RL Signal does not oppose Prev Nifty RL signal. prev Nifty Signal : " + prevSignal);            
-        }
-        return(retValue);
-    }
-    
-    boolean currentSignalSideMatchesPrevBankNiftySignalSide(MyEntrySignalParameters signalParam) {    
-
-        boolean retValue = false;
-        
-        Jedis jedis = jedisPool.getResource();
-        
-        // find index of signal of previous one hour slot
-        int index = 0;
-        String prevSignal = jedis.lindex("BANKNIFTYSIGNALSARCHIVE", index);
-        int prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
-        int prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
-        
-        if (prevSignalTimeSlot == signalParam.timeSlot) {
-            // move on as timeslots are same. most probably looking at same signal
-            index++;
-        }
-        index = index + 1; // signals are at half hour interval.
-        prevSignal = jedis.lindex("BANKNIFTYSIGNALSARCHIVE", index);
-        prevSignalTimeSlot = Integer.parseInt(prevSignal.split(",")[15]);
-        prevSignalRLSignal = Integer.parseInt(prevSignal.split(",")[3]);
-        
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-        "Info : Prev Bank Nifty Signal : " + prevSignal);
-        jedisPool.returnResource(jedis);        
-
-        if (prevSignalRLSignal == signalParam.RLSignal) {
-            retValue = true;
-        } else {
-            System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
-            "Info : Current RL Signal does not match Prev Bank Nifty RL signal. prev Bank Nifty Signal : " + prevSignal);            
+            "Info : Current RL Signal does not oppose Prev " + symbol + " RL signal. prev " + symbol + " Signal : " + prevSignal);            
         }
         return(retValue);
     }
@@ -953,23 +895,23 @@ public class MonitorEODSignals extends Thread {
                 String latestSignal = jedis.lindex(queueName, 0);
                 MyEntrySignalParameters signalParam = new MyEntrySignalParameters(latestSignal);
                 if ( (signalParam.RLSignal < 99) &&
-                        currentSignalSideMatchesPrevBankNiftySignalSide(signalParam) &&
-                        (!currentSignalSideOpposesCurrentNiftySignalSide(signalParam)) &&
-                        (!currentSignalSideOpposesPrevNiftySignalSide(signalParam))
+                        currentSignalSideMatchesSymbolsPrevSignalSide(signalParam,"BANKNIFTY") &&
+                        (!currentSignalSideOpposesSymbolsCurrentSignalSide(signalParam,"NIFTY50")) &&
+                        (!currentSignalSideOpposesSymbolsPrevSignalSide(signalParam,"NIFTY50"))
                       ) {
                     processExitPartOfSignal(signalParam);
                 } 
                 // Exit if current Nifty Signal and PrevNifty signal are opposite to current Banknifty positions
                 // Find number of positions with long
                 signalParam.RLSignal = 1;
-                if (currentSignalSideMatchesCurrentNiftySignalSide(signalParam) &&
-                        currentSignalSideMatchesPrevNiftySignalSide(signalParam)) {
+                if (currentSignalSideMatchesSymbolsCurrentSignalSide(signalParam,"NIFTY50") &&
+                        currentSignalSideMatchesSymbolsPrevSignalSide(signalParam,"NIFTY50")) {
                     // Nifty Signals are long. Exit all short positions OR PUT options
                     squareOffAllShortPositions("exitSignal",signalParam.elementName);
                 }
                 signalParam.RLSignal = -1;
-                if (currentSignalSideMatchesCurrentNiftySignalSide(signalParam) &&
-                        currentSignalSideMatchesPrevNiftySignalSide(signalParam)) {
+                if (currentSignalSideMatchesSymbolsCurrentSignalSide(signalParam,"NIFTY50") &&
+                        currentSignalSideMatchesSymbolsPrevSignalSide(signalParam,"NIFTY50")) {
                     // Nifty Signals are short. Exit all long positions OR CALL options
                     squareOffAllLongPositions("exitSignal",signalParam.elementName);                        
                 }                
@@ -978,10 +920,13 @@ public class MonitorEODSignals extends Thread {
                 String latestSignal = jedis.lindex(queueName, 0);
                 MyEntrySignalParameters signalParam = new MyEntrySignalParameters(latestSignal);
                 if (signalParam.elementName.equalsIgnoreCase("NIFTY50")) {
-                    if ( (signalParam.RLSignal < 99) && currentSignalSideMatchesPrevNiftySignalSide(signalParam) ) {
+                    if ( (signalParam.RLSignal < 99) && currentSignalSideMatchesSymbolsPrevSignalSide(signalParam,"NIFTY50") ) {
                         processExitPartOfSignal(signalParam);      
                     }
                 } else {
+                    if (signalParam.elementName.equalsIgnoreCase("CNXNIFTY")) {
+                        signalParam.elementName = "NIFTY50";
+                    }                    
                     processExitPartOfSignal(signalParam);
                 }                
             }
@@ -1006,9 +951,9 @@ public class MonitorEODSignals extends Thread {
                 String latestSignal = jedis.lindex(queueName, 0);
                 MyEntrySignalParameters signalParam = new MyEntrySignalParameters(latestSignal);
                 if ( (signalParam.RLSignal < 99) &&
-                        currentSignalSideMatchesPrevBankNiftySignalSide(signalParam) &&
-                        (!currentSignalSideOpposesCurrentNiftySignalSide(signalParam)) &&
-                        (!currentSignalSideOpposesPrevNiftySignalSide(signalParam))
+                        currentSignalSideMatchesSymbolsPrevSignalSide(signalParam,"BANKNIFTY") &&
+                        (!currentSignalSideOpposesSymbolsCurrentSignalSide(signalParam,"NIFTY50")) &&
+                        (!currentSignalSideOpposesSymbolsPrevSignalSide(signalParam,"NIFTY50"))
                       ) {
                     processEntryPartOfSignal(signalParam);
                 }
@@ -1017,10 +962,13 @@ public class MonitorEODSignals extends Thread {
                 String latestSignal = jedis.lindex(queueName, 0);
                 MyEntrySignalParameters signalParam = new MyEntrySignalParameters(latestSignal);
                 if (signalParam.elementName.equalsIgnoreCase("NIFTY50")) {
-                    if ( (signalParam.RLSignal < 99) && currentSignalSideMatchesPrevNiftySignalSide(signalParam) ) {
+                    if ( (signalParam.RLSignal < 99) && currentSignalSideMatchesSymbolsPrevSignalSide(signalParam,"NIFTY50") ) {
                         processEntryPartOfSignal(signalParam);      
                     }
                 } else {
+                    if (signalParam.elementName.equalsIgnoreCase("CNXNIFTY")) {
+                        signalParam.elementName = "NIFTY50";
+                    }                    
                     processEntryPartOfSignal(signalParam);
                 }                
             }
@@ -1049,6 +997,9 @@ public class MonitorEODSignals extends Thread {
                 String queueName = symbolName + "SIGNALSARCHIVE";
                 String latestSignal = jedis.lindex(queueName, 0);
                 MyEntrySignalParameters signalParam = new MyEntrySignalParameters(latestSignal);
+                if (signalParam.elementName.equalsIgnoreCase("CNXNIFTY")) {
+                    signalParam.elementName = "NIFTY50";
+                }                
                 processRollOverOnly(signalParam);
             }
         }
@@ -1086,6 +1037,21 @@ public class MonitorEODSignals extends Thread {
                 System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
                         "Info : Received Confirmation of availability of EOD Signals in corresponding Queues with message as : " + eodSignalReceived);
 
+                // Proecessing rules
+                // RLSIGNAL - Reinforced Learning Signal - can take values 0, +1, -1 
+                // 0 meaning non action necessary
+                // +1 meaning recommended Buy if no position/Square off if existing Short position
+                // -1 meaning recommended Sell if no position/Square off if existing Long position
+
+                // trading rule implemented :
+                // if no position for given symbol then take position as per RLSIGNAL
+                // if RLSIGNAL is -1 then
+                //   square off all long positions and take one short position
+                // else if RLSIGNAL is +1 then
+                //   square off all short positions and take one long position
+                // for taking position, send form the signal and send to entrySignalsQueue
+                // for square off, send signal to manual intervention queue
+
                 /* Processing start */
                 // update list symbols for which processing has to take place
                 String[] symbolsList = myUtils.getHashMapValueFromRedis(jedisPool, redisConfigurationKey, "TRADESYMBOLS", false).split(",");
@@ -1099,6 +1065,7 @@ public class MonitorEODSignals extends Thread {
                 // for each symbol in list of sysmbol - perform entries as applicable                
                 // update current timeslot subscriptions and positions before performing enteries
                 updateCurrentTimeSlotSubscriptions();
+                myUtils.waitForNSeconds(5); // Wait for 5 seconds before updating current open positions and entries                
                 getExistingPositionDetailsForAllPositions(openPositionsQueueKeyName);                
                 performEntriesForSymbols(symbolsList);
 

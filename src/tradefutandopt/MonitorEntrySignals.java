@@ -242,7 +242,11 @@ public class MonitorEntrySignals extends Thread {
         }
 
         // Debug Message
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Info : DaysPnL :" + currentDayPnL + " dayTakeProfitLimit : " + dayTakeProfitLimit + " dayStopLossLimit : " + dayStopLossLimit + " returning : " + returnValue);
+        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
+                "Info : DaysPnL :" + currentDayPnL + 
+                " dayTakeProfitLimit : " + dayTakeProfitLimit + 
+                " dayStopLossLimit : " + dayStopLossLimit + 
+                " returning : " + returnValue);
 
         return (returnValue);
     }
@@ -330,12 +334,20 @@ public class MonitorEntrySignals extends Thread {
         }
 
         // Debug Message
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "numOpenLongPositions : " + numOpenLongPositions + " against Allowed LONG positions : " + MAXLONGPOSITIONS);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "numOpenShortPositions : " + numOpenShortPositions + " against Allowed SHORT positions : " + MAXSHORTPOSITIONS);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "numPositions : " + (numOpenShortPositions + numOpenLongPositions) + " against max Allowed positions : " + MAXALLOWEDPOSITIONS);        
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Already Existing Status : " + alreadyExisting + " against duplicate combo allowed config as " + duplicateComboAllowed);
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "numOpenCurrentLegPositions : " + numOpenCurrentLegPositions + " against Allowed simulneously same contract Open positions : " + maxNumDuplicateLegsAllowed);        
-        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + "Finally returning (true is allow taking positions. false is do not allow) : " + returnValue + " for " + tradingSignal.getTradingContractStructure() + " for Long/Short " + tradingSignal.getSideAndSize());
+        System.out.println(String.format("%1$tY%1$tm%1$td:%1$tH:%1$tM:%1$tS ", Calendar.getInstance(myExchangeObj.getExchangeTimeZone())) + 
+                "numOpenLongPositions : " + numOpenLongPositions + 
+                " against Allowed LONG positions : " + MAXLONGPOSITIONS +
+                " numOpenShortPositions : " + numOpenShortPositions + 
+                " against Allowed SHORT positions : " + MAXSHORTPOSITIONS + 
+                " numTotalPositions : " + (numOpenShortPositions + numOpenLongPositions) + 
+                " against max Allowed positions : " + MAXALLOWEDPOSITIONS + 
+                " Already Existing Status : " + alreadyExisting + 
+                " against duplicate combo allowed config as " + duplicateComboAllowed + 
+                " numOpenCurrentLegPositions : " + numOpenCurrentLegPositions + 
+                " against Allowed simulneously same contract Open positions : " + maxNumDuplicateLegsAllowed + 
+                " Finally returning (true is allow taking positions. false is do not allow) : " + returnValue + 
+                " for " + tradingSignal.getTradingContractStructure() + 
+                " for Long/Short " + tradingSignal.getSideAndSize());
 
         return (returnValue);
     }
